@@ -1,0 +1,5 @@
+
+build/
+tftp_client
+*.o
+*.d
