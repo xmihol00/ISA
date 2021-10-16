@@ -87,37 +87,80 @@ bool parse_line(const string &line, arguments_t &arguments)
                 return false;
             }
             size_t pos = word.find(',');
+            string address;
             if (pos != string::npos)
             {
-                string address = word.substr(0, pos);
-                if (!inet_pton(AF_INET, address.c_str(), &arguments.address.ipv4))
+                address = word.substr(0, pos);
+
+                if (pos + 1 == word.size())
                 {
-                    if (!inet_pton(AF_INET6, address.c_str(), &arguments.address.ipv6))
+                    if (!(stream >> word))
                     {
-                        cerr << "Error: Invalid IP address. Type '?' or 'h' for help." << endl;
+                        cerr << "Error: Address must contain a port number. Type '?' or 'h' for help." << endl;
                         return false;
                     }
-                    arguments.address_type = IPv6;
                 }
                 else
                 {
-                    arguments.address_type = IPv4;
+                    word = word.substr(pos + 1);
+                }
+            }
+            else
+            {
+                address = word;
+                if (!(stream >> word))
+                {
+                    cerr << "Error: Address must contain a port number. Type '?' or 'h' for help." << endl;
+                    return false;
                 }
 
-                string port = word.substr(pos + 1);
-                converter = strtol(port.c_str(), &endptr, 10);
-                if (converter < 0L || converter > UINT16_MAX)
+                if (word == ",")
                 {
-                    cerr << "Error: Port number out of range. Type '?' or 'h' for help." << endl;
-                    return false;
+                    if (!(stream >> word))
+                    {
+                        cerr << "Error: Address must contain a port number. Type '?' or 'h' for help." << endl;
+                        return false;
+                    }   
                 }
-                else if (endptr != nullptr && *endptr != '\0')
+                else
                 {
-                    cerr << "Error: port number must be a positive integer. Type '?' or 'h' for help." << endl;
-                    return false;
+                    pos = word.find(",");
+                    if (pos == string::npos)
+                    {
+                        cerr << "Error: Address must contain a port number. Type '?' or 'h' for help." << endl;
+                        return false;
+                    }
+
+                    word = word.substr(pos + 1);
                 }
-                arguments.port = (uint16_t)converter; 
             }
+            
+            if (!inet_pton(AF_INET, address.c_str(), &arguments.address.ipv4))
+            {
+                if (!inet_pton(AF_INET6, address.c_str(), &arguments.address.ipv6))
+                {
+                    cerr << "Error: Invalid IP address. Type '?' or 'h' for help." << endl;
+                    return false;
+                }
+                arguments.address_type = IPv6;
+            }
+            else
+            {
+                arguments.address_type = IPv4;
+            }
+
+            converter = strtol(word.c_str(), &endptr, 10);
+            if (converter < 0L || converter > UINT16_MAX)
+            {
+                cerr << "Error: Port number out of range. Type '?' or 'h' for help." << endl;
+                return false;
+            }
+            else if (endptr != nullptr && *endptr != '\0')
+            {
+                cerr << "Error: Port number must be a positive integer. Type '?' or 'h' for help." << endl;
+                return false;
+            }
+            arguments.port = (uint16_t)converter; 
         }
         else if (word == "-c")
         {
