@@ -16,6 +16,10 @@ bool parse_line(const string &line, arguments_t &arguments)
         help_msg();
         return false;
     }
+    else if (line == "")
+    {
+        return false;
+    }
 
     bool mode{false};
     long converter{0};
@@ -24,7 +28,7 @@ bool parse_line(const string &line, arguments_t &arguments)
     arguments.file_URL = string();
     arguments.address_type = UNSET;
     arguments.data_mode = BINARY;
-    arguments.port = 69;
+    arguments.port = htons(DEFAULT_PORT);
     arguments.timeout = 0;
     arguments.multicast = false;
 
@@ -160,7 +164,7 @@ bool parse_line(const string &line, arguments_t &arguments)
                 cerr << "Error: Port number must be a positive integer. Type '?' or 'h' for help." << endl;
                 return false;
             }
-            arguments.port = (uint16_t)converter; 
+            arguments.port = (in_port_t)htons(converter); 
         }
         else if (word == "-c")
         {

@@ -8,10 +8,11 @@
 #include <cstring>
 
 #include <arpa/inet.h>
+#include <sys/socket.h>
 
 using namespace std;
 
-#define DEFAULT_PORT 69
+#define DEFAULT_PORT 69U
 
 enum transfer_mode_t
 {
@@ -45,11 +46,10 @@ typedef struct
         in_addr ipv4;
         in6_addr ipv6;
     }                   address;
-    uint16_t            port;
+    in_port_t           port;
     bool                multicast;
 } arguments_t;
 
 void help_msg();
 
 bool parse_line(const string &line, arguments_t &arguments);
-

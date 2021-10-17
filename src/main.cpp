@@ -9,7 +9,7 @@ int main()
     {
         if (parse_line(line, arguments))
         {
-            cout << "file recieved" << endl;
+            transfer(arguments);
         }
         cout << "> ";
     }
