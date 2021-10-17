@@ -53,9 +53,14 @@ void transfer(const arguments_t &arguments)
 void read(int socket_fd, struct sockaddr *address, socklen_t length, const string &file_URL, data_mode_t mode)
 {
     uint8_t retries = 0;
+
     char buffer[BUFFER_SIZE];
     uint16_t *opcode = (uint16_t *)buffer;
-    uint16_t *err_code = (uint16_t *)&buffer[2];
+    uint16_t *block_number = (uint16_t *)&buffer[2];
+
+    char ack_buff[ACK_BUFFER_SIZE];
+    uint16_t *ack_block_number = (uint16_t *)&ack_buff[2];
+
     ssize_t size;
     struct sockaddr_in6 server;
     server.sin6_port = ((sockaddr_in *)address)->sin_port;
@@ -94,7 +99,7 @@ void read(int socket_fd, struct sockaddr *address, socklen_t length, const strin
     {
         if (*opcode == ERR)
         {
-            cerr << "Error: " << err_code_value(*err_code) << " Message: " << &buffer[4] << endl;
+            cerr << "Error: " << err_code_value(*block_number) << " Message: " << &buffer[4] << endl;
             goto file_disposal;
         }
         else
@@ -116,23 +121,21 @@ void read(int socket_fd, struct sockaddr *address, socklen_t length, const strin
                 cerr << "Error: Transfer of data failed. Server timed out." << endl;
                 goto file_disposal;
             }
-            ACK_header(buffer, size);
-            if (sendto(socket_fd, buffer, size, 0, address, length) != size)
+            ACK_header(ack_buff, *block_number, size);
+            if (sendto(socket_fd, ack_buff, size, 0, address, length) != size)
             {
                 cerr << "Error: Transfer of data failed: " << strerror(errno) << endl;
                 goto file_disposal;
             }
         } 
-        while ((size = recvfrom(socket_fd, buffer, BUFFER_SIZE, 0, recieve_address, &length)) == -1);
+        while ((size = recvfrom(socket_fd, buffer, BUFFER_SIZE, 0, recieve_address, &length)) == -1 || 
+                (ntohs(*block_number) != ntohs(*ack_block_number) + 1 && *opcode == DATA));
 
-        retries = 0;
-        buffer[516] = 0;
-        fwrite(&buffer[4], 1, size - 4, file);
         if (*opcode != DATA)
         {
             if (*opcode == ERR)
             {
-                cerr << "Error: " << err_code_value(*err_code) << " Message: " << &buffer[4] << endl;
+                cerr << "Error: " << err_code_value(*block_number) << " Message: " << &buffer[4] << endl;
                 goto file_disposal;
             }
             else
@@ -141,8 +144,12 @@ void read(int socket_fd, struct sockaddr *address, socklen_t length, const strin
                 goto file_disposal;
             }
         }   
+
+        retries = 0;
+        buffer[516] = 0;
+        fwrite(&buffer[4], 1, size - 4, file);
     }
-    ACK_header(buffer, size);
+    ACK_header(buffer, *block_number, size);
     sendto(socket_fd, buffer, size, 0, address, length);
 
 
@@ -181,7 +188,7 @@ void write(int socket_fd, struct sockaddr *address, socklen_t length, const stri
         
         if (retries++ > MAX_RETRIES)
         {
-            cerr << "Error: Transfer of data failed. Server timed out.--" << endl;
+            cerr << "Error: Transfer of data failed. Server timed out." << endl;
             goto file_disposal;
         }
 
@@ -232,7 +239,8 @@ void write(int socket_fd, struct sockaddr *address, socklen_t length, const stri
                 goto file_disposal;
             }
         }
-        while (recvfrom(socket_fd, ack_buff, ACK_BUFFER_SIZE, 0, recieve_address, &length) == -1 || *ack_block_number != *block_number); 
+        while (recvfrom(socket_fd, ack_buff, ACK_BUFFER_SIZE, 0, recieve_address, &length) == -1 || 
+                        (*ack_block_number != *block_number && *ack_opcode == ACK)); 
         retries = 0;
         
         if (*ack_opcode != ACK)

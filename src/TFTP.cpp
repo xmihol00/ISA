@@ -41,11 +41,13 @@ void WRQ_header(char *buffer, const string &file_URL, data_mode_t mode, ssize_t 
     }
 }
 
-void ACK_header(char *buffer, ssize_t &size)
+void ACK_header(char *buffer, uint16_t ack_number, ssize_t &size)
 {
     uint16_t *opcode = (uint16_t *)buffer;
+    uint16_t *block_number = (uint16_t *)&buffer[2];
 
     *opcode = ACK;
+    *block_number = ack_number;
     buffer[4] = (char)0;
     size = 4;
 }

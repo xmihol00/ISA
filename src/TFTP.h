@@ -18,6 +18,6 @@ void RRQ_header(char *buffer, const string &file_URL, data_mode_t mode, ssize_t 
 
 void WRQ_header(char *buffer, const string &file_URL, data_mode_t mode, ssize_t &size);
 
-void ACK_header(char *buffer, ssize_t &size);
+void ACK_header(char *buffer, uint16_t ack_number, ssize_t &size);
 
 string err_code_value(uint16_t err_code);
