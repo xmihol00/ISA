@@ -29,7 +29,7 @@ bool parse_line(const string &line, arguments_t &arguments)
     arguments.address_type = UNSET;
     arguments.data_mode = BINARY;
     arguments.port = htons(DEFAULT_PORT);
-    arguments.timeout = 0;
+    arguments.timeout = 1;
     arguments.multicast = false;
 
     istringstream stream(line);
@@ -218,4 +218,17 @@ bool parse_line(const string &line, arguments_t &arguments)
     }
 
     return true;
+}
+
+string get_file_name(const string &file_URL)
+{
+    size_t pos = file_URL.find_last_of("/");
+    if (pos == string::npos)
+    {
+        return file_URL;
+    }
+    else
+    {
+        return file_URL.substr(pos + 1);
+    }
 }

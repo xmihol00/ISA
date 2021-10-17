@@ -53,3 +53,5 @@ typedef struct
 void help_msg();
 
 bool parse_line(const string &line, arguments_t &arguments);
+
+string get_file_name(const string &file_URL);
