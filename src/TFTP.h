@@ -12,7 +12,7 @@ using namespace std;
 #define DATA (3U << 8)
 #define ACK  (4U << 8)
 #define ERR  (5U << 8)
-
+#define MAX_RETRIES 5U
 
 void RRQ_header(char *buffer, const string &file_URL, data_mode_t mode, ssize_t &size);
 

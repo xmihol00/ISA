@@ -52,11 +52,13 @@ void transfer(const arguments_t &arguments)
 
 void read(int socket_fd, struct sockaddr *address, socklen_t length, const string &file_URL, data_mode_t mode)
 {
-    char buffer[BUFFER_ZIZE];
+    uint8_t retries = 0;
+    char buffer[BUFFER_SIZE];
     uint16_t *opcode = (uint16_t *)buffer;
     uint16_t *err_code = (uint16_t *)&buffer[2];
     ssize_t size;
     struct sockaddr_in6 server;
+    server.sin6_port = ((sockaddr_in *)address)->sin_port;
     struct sockaddr *recieve_address = (struct sockaddr *) &server;
     
     string file_name = get_file_name(file_URL);
@@ -67,21 +69,28 @@ void read(int socket_fd, struct sockaddr *address, socklen_t length, const strin
         return;
     }
 
-    RRQ_header(buffer, file_URL, mode, size);
-    if (sendto(socket_fd, buffer, size, 0, address, length) != size)
+    do
     {
-        cerr << "Error: Transfer of data failed." << endl;
-        goto file_disposal;
-    }
+        ((sockaddr_in *)address)->sin_port = server.sin6_port;
+        
+        if (retries++ > MAX_RETRIES)
+        {
+            cerr << "Error: Transfer of data failed. Server timed out." << endl;
+            goto file_disposal;
+        }
 
-    getsockname(socket_fd, recieve_address, &length);
-    size = recvfrom(socket_fd, buffer, BUFFER_ZIZE, 0, recieve_address, &length);
-    if (size == -1)
-    {
-        cerr << "Error: Transfer of data failed." << endl;
-        goto file_disposal;
+        RRQ_header(buffer, file_URL, mode, size);
+        if (sendto(socket_fd, buffer, size, 0, address, length) != size)
+        {
+            cerr << "Error: Transfer of data failed: " << strerror(errno) << endl;
+            goto file_disposal;
+        }
+        getsockname(socket_fd, recieve_address, &length);
     }
-    else if (*opcode != ACK)
+    while ((size = recvfrom(socket_fd, buffer, BUFFER_SIZE, 0, recieve_address, &length)) == -1);
+    retries = 0;
+
+    if (*opcode != DATA)
     {
         if (*opcode == ERR)
         {
@@ -90,7 +99,7 @@ void read(int socket_fd, struct sockaddr *address, socklen_t length, const strin
         }
         else
         {
-            cerr << "Error: Transfer of data failed." << endl;
+            cerr << "Error: Transfer of data failed. Malformed packet recieved." << endl;
             goto file_disposal;
         }
     }
@@ -100,14 +109,23 @@ void read(int socket_fd, struct sockaddr *address, socklen_t length, const strin
     fwrite(&buffer[4], 1, size - 4, file);
     while (size == TFTP_DATAGRAM_SIZE)
     {
-        ACK_header(buffer, size);
-        if (sendto(socket_fd, buffer, size, 0, address, length) != size)
+        do
         {
-            cerr << "Error: Transfer of data failed." << endl;
-            goto file_disposal;
-        }
+            if (retries++ > MAX_RETRIES)
+            {
+                cerr << "Error: Transfer of data failed. Server timed out." << endl;
+                goto file_disposal;
+            }
+            ACK_header(buffer, size);
+            if (sendto(socket_fd, buffer, size, 0, address, length) != size)
+            {
+                cerr << "Error: Transfer of data failed: " << strerror(errno) << endl;
+                goto file_disposal;
+            }
+        } 
+        while ((size = recvfrom(socket_fd, buffer, BUFFER_SIZE, 0, recieve_address, &length)) == -1);
 
-        size = recvfrom(socket_fd, buffer, BUFFER_ZIZE, 0, recieve_address, &length);
+        retries = 0;
         buffer[516] = 0;
         fwrite(&buffer[4], 1, size - 4, file);
         if (*opcode != DATA)
@@ -119,20 +137,14 @@ void read(int socket_fd, struct sockaddr *address, socklen_t length, const strin
             }
             else
             {
-                cerr << "Error: Transfer of data failed." << endl;
+                cerr << "Error: Transfer of data failed. Malformed packet recieved." << endl;
                 goto file_disposal;
             }
         }   
     }
-    if (size != -1)
-    {
-        ACK_header(buffer, size);
-        sendto(socket_fd, buffer, size, 0, address, length);
-    }
-    else
-    {
-        cerr << "Error: Transfer of data failed." << endl;
-    }
+    ACK_header(buffer, size);
+    sendto(socket_fd, buffer, size, 0, address, length);
+
 
 file_disposal:
     fclose(file);
@@ -140,11 +152,19 @@ file_disposal:
 
 void write(int socket_fd, struct sockaddr *address, socklen_t length, const string &file_URL, data_mode_t mode)
 {
-    char buffer[BUFFER_ZIZE];
+    uint8_t retries = 0;
+    
+    char buffer[BUFFER_SIZE];
     uint16_t *opcode = (uint16_t *)buffer;
     uint16_t *block_number = (uint16_t *)&buffer[2];
+
+    char ack_buff[ACK_BUFFER_SIZE];
+    uint16_t *ack_opcode = (uint16_t *)ack_buff;
+    uint16_t *ack_block_number = (uint16_t *)&ack_buff[2];
+
     ssize_t size;
     struct sockaddr_in6 server;
+    server.sin6_port = ((sockaddr_in *)address)->sin_port;
     struct sockaddr *recieve_address = (struct sockaddr *) &server;
     
     string file_name = get_file_name(file_URL);
@@ -155,35 +175,41 @@ void write(int socket_fd, struct sockaddr *address, socklen_t length, const stri
         return;
     }
 
-    WRQ_header(buffer, file_URL, mode, size);
-    if (sendto(socket_fd, buffer, size, 0, address, length) != size)
+    do
     {
-        cerr << "Error: Transfer of data failed, could not send write request." << endl;
-        goto file_disposal;
-    }
+        ((sockaddr_in *)address)->sin_port = server.sin6_port;
+        
+        if (retries++ > MAX_RETRIES)
+        {
+            cerr << "Error: Transfer of data failed. Server timed out.--" << endl;
+            goto file_disposal;
+        }
 
-    getsockname(socket_fd, recieve_address, &length);
-    size = recvfrom(socket_fd, buffer, BUFFER_ZIZE, 0, recieve_address, &length);
-    if (size == -1)
+        WRQ_header(buffer, file_URL, mode, size);
+        if (sendto(socket_fd, buffer, size, 0, address, length) != size)
+        {
+            cerr << "Error: Transfer of data failed: " << strerror(errno) << endl;
+            goto file_disposal;
+        }
+        getsockname(socket_fd, recieve_address, &length);
+    } 
+    while ((size = recvfrom(socket_fd, ack_buff, ACK_BUFFER_SIZE, 0, recieve_address, &length)) == -1 || *ack_block_number != 0);
+    ((sockaddr_in *)address)->sin_port = server.sin6_port;
+    retries = 0;
+
+    if (*ack_opcode != ACK)
     {
-        cerr << "Error: Transfer of data failed, no write request response recieved." << endl;
-        goto file_disposal;
-    }
-    else if (*opcode != ACK)
-    {
-        if (*opcode == ERR)
+        if (*ack_opcode == ERR)
         {
             cerr << "Error: " << err_code_value(*block_number) << " Message: " << &buffer[4] << endl;
             goto file_disposal;
         }
         else
         {
-            cerr << "where?" << endl;
-            cerr << "Error: Transfer of data failed." << endl;
+            cerr << "Error: Transfer of data failed. Malformed packet recieved." << endl;
             goto file_disposal;
         }
     }
-    ((sockaddr_in *)address)->sin_port = server.sin6_port;
 
     for (uint16_t i = 1; ; i++)
     {
@@ -191,24 +217,34 @@ void write(int socket_fd, struct sockaddr *address, socklen_t length, const stri
         *block_number = htons(i);
         size = fread(&buffer[4], 1, TFTP_DATA_SIZE, file);
         size += 4;
-        if (sendto(socket_fd, buffer, size, 0, address, length) != size)
+
+        do
         {
-            cerr << "Error: Transfer of data failed." << endl;
-            goto file_disposal;
+            if (retries++ > MAX_RETRIES)
+            {
+                cerr << "Error: Transfer of data failed. Server timed out." << endl;
+                goto file_disposal;
+            }
+
+            if (sendto(socket_fd, buffer, size, 0, address, length) != size)
+            {
+                cerr << "Error: Transfer of data failed: " << strerror(errno) << endl;
+                goto file_disposal;
+            }
         }
+        while (recvfrom(socket_fd, ack_buff, ACK_BUFFER_SIZE, 0, recieve_address, &length) == -1 || *ack_block_number != *block_number); 
+        retries = 0;
         
-        while (recvfrom(socket_fd, buffer, BUFFER_ZIZE, 0, recieve_address, &length) == -1);
-        
-        if (*opcode != ACK)
+        if (*ack_opcode != ACK)
         {
-            if (*opcode == ERR)
+            if (*ack_opcode == ERR)
             {
                 cerr << "Error: " << err_code_value(*block_number) << " Message: " << &buffer[4] << endl;
                 goto file_disposal;
             }
             else
             {
-                cerr << "Error: Transfer of data failed." << endl;
+                cerr << "Error: Transfer of data failed. Malformed packet recieved." << endl;
                 goto file_disposal;
             }
         }

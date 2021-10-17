@@ -6,8 +6,10 @@ using namespace std;
 #include "TFTP.h"
 
 #include <unistd.h>
+#include <string.h>
+#include <errno.h>
 
-#define BUFFER_ZIZE 1024U
+#define BUFFER_SIZE 1024U
 #define ACK_BUFFER_SIZE 256U
 
 void transfer(const arguments_t &arguments);
