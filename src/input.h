@@ -9,10 +9,12 @@
 
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include <sys/statvfs.h>
 
 using namespace std;
 
 #define DEFAULT_PORT 69U
+#define DEFAULT_TIMEOUT 1U
 
 enum transfer_mode_t
 {
@@ -37,8 +39,8 @@ typedef struct
 {
     transfer_mode_t     transfer_mode;
     string              file_URL;
-    uint32_t            timeout;
-    uint32_t            block_size;
+    uint8_t             timeout;
+    int                 block_size;
     data_mode_t         data_mode;
     address_type_t      address_type;
     union
@@ -55,3 +57,5 @@ void help_msg();
 bool parse_line(const string &line, arguments_t &arguments);
 
 string get_file_name(const string &file_URL);
+
+long available_space();

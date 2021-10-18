@@ -29,8 +29,9 @@ bool parse_line(const string &line, arguments_t &arguments)
     arguments.address_type = UNSET;
     arguments.data_mode = BINARY;
     arguments.port = htons(DEFAULT_PORT);
-    arguments.timeout = 1;
+    arguments.timeout = 0;
     arguments.multicast = false;
+    arguments.block_size = 0;
 
     istringstream stream(line);
     for (string word; stream >> word;)
@@ -63,6 +64,26 @@ bool parse_line(const string &line, arguments_t &arguments)
                 return false;
             }
         }
+        else if (word == "-t")
+        {
+            if (!(stream >> word))
+            {
+                cerr << "Error: -t option requires a parameter. Type '?' or 'h' for help." << endl;
+                return false;
+            }
+            converter = strtol(word.c_str(), &endptr, 10);
+            if (converter < 0L || converter > 255L)
+            {
+                cerr << "Error: Timeout out of range. Type '?' or 'h' for help." << endl;
+                return false;
+            }
+            else if (endptr != nullptr && *endptr != '\0')
+            {
+                cerr << "Error: -t option must be followed by an integer between 1 and 255 inclusive. Type '?' or 'h' for help." << endl;
+                return false;
+            }
+            arguments.timeout = (uint8_t)converter;
+        }
         else if (word == "-s")
         {
             if (!(stream >> word))
@@ -71,7 +92,7 @@ bool parse_line(const string &line, arguments_t &arguments)
                 return false;
             }
             converter = strtol(word.c_str(), &endptr, 10);
-            if (converter < 0L || converter > UINT32_MAX)
+            if (converter < 0L || converter > INT32_MAX)
             {
                 cerr << "Error: Block size out of range. Type '?' or 'h' for help." << endl;
                 return false;
@@ -81,7 +102,7 @@ bool parse_line(const string &line, arguments_t &arguments)
                 cerr << "Error: -s option must be followed by a positive integer. Type '?' or 'h' for help." << endl;
                 return false;
             }
-            arguments.timeout = (uint32_t)converter;
+            arguments.block_size = (int)converter;
         }
         else if (word == "-a")
         {
@@ -231,4 +252,15 @@ string get_file_name(const string &file_URL)
     {
         return file_URL.substr(pos + 1);
     }
+}
+
+long available_space()
+{
+    struct statvfs stats;
+    if (statvfs(".", &stats) == -1)
+    {
+        cerr << "Warning: Could not obtain available disk space." << endl;
+    }
+
+    return stats.f_bsize * stats.f_bavail;
 }

@@ -8,8 +8,7 @@ DEPS = ${OBJ:.o=.d}
 DIR_OBJ = $(addprefix $(BUILD_DIR), $(OBJ))
 DIR_DEPS = $(addprefix $(BUILD_DIR), $(DEPS))
 
-
-.PHONY: all clean run
+.PHONY: all clean
 
 all: $(EXE)
 

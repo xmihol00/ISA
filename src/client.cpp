@@ -5,8 +5,8 @@ void transfer(const arguments_t &arguments)
 {
     struct sockaddr *destination;
     socklen_t destination_len;
-    struct timeval time_out;
-    int socket_fd, mtu;
+    int socket_fd;
+    int32_t mtu;
 
     if (arguments.address_type == IPv4)
     {
@@ -34,34 +34,66 @@ void transfer(const arguments_t &arguments)
         return;
     }
 
-    mtu = get_MTU(*destination, destination_len);
-    cerr << "MTU: " << mtu << endl;
-
-    time_out.tv_sec = arguments.timeout;
-    time_out.tv_usec = 0;
-    setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&time_out, sizeof(time_out));    
-
-    if (arguments.transfer_mode == READ)
+    if ((mtu = get_min_MTU(*destination)) == INT32_MAX)
     {
-        read(socket_fd, destination, destination_len, arguments.file_URL, arguments.data_mode);
+        cerr << "Warning: MTU could not be obtained, default block size of 512 is used instead." << endl;
+        mtu = TFTP_DATA_SIZE;
     }
     else
     {
-        write(socket_fd, destination, destination_len, arguments.file_URL, arguments.data_mode);
+        if (destination->sa_family == AF_INET)
+        {
+            mtu -= MAX_IPv4_HDR + UDP_HDR + TFTP_HDR;
+            if (mtu >= arguments.block_size)
+            {
+                mtu = arguments.block_size > 0 ? arguments.block_size : mtu;
+            }
+            else
+            {
+                cerr << "Warning: Specified block size exceeds minimum MTU of size " << mtu << ", which is used instead." << endl;
+            }
+        }
+        else
+        {
+            mtu -= IPv6_HDR + UDP_HDR + TFTP_HDR;
+            if (mtu >= arguments.block_size)
+            {
+                mtu = arguments.block_size > 0 ? arguments.block_size : mtu;
+            }
+            else
+            {
+                cerr << "Warning: Specified block size exceeds minimum MTU of size " << mtu << ", which is used instead." << endl;
+            }
+        }
+    }
+
+    set_timeout(socket_fd, arguments.timeout);
+
+    if (arguments.transfer_mode == READ)
+    {
+        read(socket_fd, destination, destination_len, {arguments.file_URL, arguments.data_mode, mtu, arguments.multicast, arguments.timeout});
+    }
+    else
+    {
+        write(socket_fd, destination, destination_len, {arguments.file_URL, arguments.data_mode, mtu, arguments.multicast, arguments.timeout});
     }
 
     close(socket_fd);
 }
 
-void read(int socket_fd, struct sockaddr *address, socklen_t length, const string &file_URL, data_mode_t mode)
+void read(int socket_fd, struct sockaddr *address, socklen_t addr_length, transfer_data_t data)
 {
     uint8_t retries = 0;
+    negotiation_t negotiation;
+    TFTP_options_t options = { .file_URL = data.file_URL, .opcode = RRQ, .mode = data.mode, .block_size = data.block_size, 
+                               .transfer_size = 0, .timeout = data.timeout, .multicast = data.multicast};
+    
 
-    char buffer[BUFFER_SIZE];
+    char *buffer = new char[data.block_size + TFTP_HDR];
     uint16_t *opcode = (uint16_t *)buffer;
     uint16_t *block_number = (uint16_t *)&buffer[2];
 
-    char ack_buff[ACK_BUFFER_SIZE];
+    char ack_buff[ACK_BUFFER_SIZE] = {0, };
     uint16_t *ack_block_number = (uint16_t *)&ack_buff[2];
 
     ssize_t size;
@@ -69,12 +101,12 @@ void read(int socket_fd, struct sockaddr *address, socklen_t length, const strin
     server.sin6_port = ((sockaddr_in *)address)->sin_port;
     struct sockaddr *recieve_address = (struct sockaddr *) &server;
     
-    string file_name = get_file_name(file_URL);
+    string file_name = get_file_name(data.file_URL);
     FILE *file = fopen(file_name.c_str(), "w");
     if (file == nullptr)
     {
         cerr << "Error: Could not open file '" << file_name << "' for writing." << endl;
-        return;
+        goto data_cleanup;
     }
 
     do
@@ -84,90 +116,157 @@ void read(int socket_fd, struct sockaddr *address, socklen_t length, const strin
         if (retries++ > MAX_RETRIES)
         {
             cerr << "Error: Transfer of data failed. Server timed out." << endl;
-            goto file_disposal;
+            goto cleanup;
         }
 
-        RRQ_header(buffer, file_URL, mode, size);
-        if (sendto(socket_fd, buffer, size, 0, address, length) != size)
+        RQ_header(buffer, size, options);
+        if (sendto(socket_fd, buffer, size, 0, address, addr_length) != size)
         {
-            cerr << "Error: Transfer of data failed: " << strerror(errno) << endl;
-            goto file_disposal;
+            cerr << "Error: Transfer of data failed. Data could not be send fully." << endl;
+            goto cleanup;
         }
-        getsockname(socket_fd, recieve_address, &length);
+        getsockname(socket_fd, recieve_address, &addr_length);
     }
-    while ((size = recvfrom(socket_fd, buffer, BUFFER_SIZE, 0, recieve_address, &length)) == -1);
+    while ((size = recvfrom(socket_fd, buffer, data.block_size + TFTP_HDR, 0, recieve_address, &addr_length)) == -1);
     retries = 0;
+    ((sockaddr_in *)address)->sin_port = server.sin6_port;
+    
+    if (*opcode == OACK)
+    {
+        try
+        {
+            negotiation = parse_OACK(buffer, size);
+        }
+        catch(const std::exception& e)
+        {
+            cerr << "Error: Could not parse datagram." << endl;
+            ERR_packet(buffer, size, ILLEGAL_TFTP, "Could no parse OACK datagram.");
+            sendto(socket_fd, buffer, size, 0, address, addr_length);
+            goto cleanup;
+        }
+
+        if (negotiation.block_size <= data.block_size)
+        {
+            data.block_size = negotiation.block_size + TFTP_HDR;
+        }
+        else
+        {
+            cerr << "Error: Server specified block size larger than offered." << endl;
+            ERR_packet(buffer, size, ILLEGAL_TFTP, "Block size larger than specified by client.");
+            sendto(socket_fd, buffer, size, 0, address, addr_length);
+            goto cleanup;
+        }
+
+        if (data.timeout != 0 && negotiation.timeout != data.timeout)
+        {
+            set_timeout(socket_fd, DEFAULT_TIMEOUT);
+            cerr << "Warning: Server did not accept specified timeout of " << data.timeout 
+                 << " s. Default timeout of 1 s is used instead." << endl;
+        }
+
+        if (negotiation.transfer_size > available_space())
+        {
+            cerr << "Error: Transfered file is larger than available disk space." << endl;
+            ERR_packet(buffer, size, DISK_FULL, "File size exeeds available disk space.");
+            sendto(socket_fd, buffer, size, 0, address, addr_length);
+            goto cleanup;
+        }
+
+        do
+        {
+            if (retries++ > MAX_RETRIES)
+            {
+                cerr << "Error: Transfer of data failed. Server timed out." << endl;
+                goto cleanup;
+            }
+
+            ACK_header(buffer, size, 0);
+            if (sendto(socket_fd, buffer, size, 0, address, addr_length) != size)
+            {
+                cerr << "Error: Transfer of data failed. Data could not be send fully." << endl;
+                goto cleanup;
+            }
+        }
+        while ((size = recvfrom(socket_fd, buffer, data.block_size, 0, recieve_address, &addr_length)) == -1);
+        retries = 0;
+    }
+    else
+    {
+        data.block_size = TFTP_DATAGRAM_SIZE;
+    }
 
     if (*opcode != DATA)
     {
         if (*opcode == ERR)
         {
-            cerr << "Error: " << err_code_value(*block_number) << " Message: " << &buffer[4] << endl;
-            goto file_disposal;
+            cerr << "Error: " << err_code_value(*block_number) << " Message: " << &buffer[TFTP_HDR] << endl;
+            goto cleanup;
         }
         else
         {
-            cerr << "Error: Transfer of data failed. Malformed packet recieved." << endl;
-            goto file_disposal;
+            cerr << "Error: Transfer of data failed. Unexpected packet recieved." << endl;
+            goto cleanup;
         }
     }
-    ((sockaddr_in *)address)->sin_port = server.sin6_port;
 
-    buffer[516] = 0;
-    fwrite(&buffer[4], 1, size - 4, file);
-    while (size == TFTP_DATAGRAM_SIZE)
+    fwrite(&buffer[TFTP_HDR], 1, size - TFTP_HDR, file);
+    while (size == data.block_size)
     {
         do
         {
             if (retries++ > MAX_RETRIES)
             {
                 cerr << "Error: Transfer of data failed. Server timed out." << endl;
-                goto file_disposal;
+                goto cleanup;
             }
-            ACK_header(ack_buff, *block_number, size);
-            if (sendto(socket_fd, ack_buff, size, 0, address, length) != size)
+            ACK_header(ack_buff, size, *block_number);
+            if (sendto(socket_fd, ack_buff, size, 0, address, addr_length) != size)
             {
-                cerr << "Error: Transfer of data failed: " << strerror(errno) << endl;
-                goto file_disposal;
+                cerr << "Error: Transfer of data failed. Data could not be send fully." << endl;
+                goto cleanup;
             }
         } 
-        while ((size = recvfrom(socket_fd, buffer, BUFFER_SIZE, 0, recieve_address, &length)) == -1 || 
+        while ((size = recvfrom(socket_fd, buffer, data.block_size, 0, recieve_address, &addr_length)) == -1 || 
                 (ntohs(*block_number) != ntohs(*ack_block_number) + 1 && *opcode == DATA));
 
         if (*opcode != DATA)
         {
             if (*opcode == ERR)
             {
-                cerr << "Error: " << err_code_value(*block_number) << " Message: " << &buffer[4] << endl;
-                goto file_disposal;
+                cerr << "Error: " << err_code_value(*block_number) << " Message: " << &buffer[TFTP_HDR] << endl;
+                goto cleanup;
             }
             else
             {
-                cerr << "Error: Transfer of data failed. Malformed packet recieved." << endl;
-                goto file_disposal;
+                cerr << "Error: Transfer of data failed. Unexpected packet recieved." << endl;
+                goto cleanup;
             }
         }   
 
         retries = 0;
-        buffer[516] = 0;
-        fwrite(&buffer[4], 1, size - 4, file);
+        fwrite(&buffer[TFTP_HDR], 1, size - TFTP_HDR, file);
     }
-    ACK_header(buffer, *block_number, size);
-    sendto(socket_fd, buffer, size, 0, address, length);
+    ACK_header(buffer, size, *block_number);
+    sendto(socket_fd, buffer, size, 0, address, addr_length);
 
-file_disposal:
+cleanup:
     fclose(file);
+data_cleanup:
+    delete[] buffer;
 };
 
-void write(int socket_fd, struct sockaddr *address, socklen_t length, const string &file_URL, data_mode_t mode)
+void write(int socket_fd, struct sockaddr *address, socklen_t addr_length, transfer_data_t data)
 {
     uint8_t retries = 0;
+    negotiation_t negotiation;
+    TFTP_options_t options = { .file_URL = data.file_URL, .opcode = WRQ, .mode = data.mode, .block_size = data.block_size, 
+                               .transfer_size = 0, .timeout = data.timeout, .multicast = data.multicast };
     
-    char buffer[BUFFER_SIZE];
+    char *buffer = new char[data.block_size + TFTP_HDR];
     uint16_t *opcode = (uint16_t *)buffer;
     uint16_t *block_number = (uint16_t *)&buffer[2];
 
-    char ack_buff[ACK_BUFFER_SIZE];
+    char ack_buff[ACK_BUFFER_SIZE] = {0, };
     uint16_t *ack_opcode = (uint16_t *)ack_buff;
     uint16_t *ack_block_number = (uint16_t *)&ack_buff[2];
 
@@ -176,12 +275,18 @@ void write(int socket_fd, struct sockaddr *address, socklen_t length, const stri
     server.sin6_port = ((sockaddr_in *)address)->sin_port;
     struct sockaddr *recieve_address = (struct sockaddr *) &server;
     
-    string file_name = get_file_name(file_URL);
+    string file_name = get_file_name(data.file_URL);
     FILE *file = fopen(file_name.c_str(), "r");
     if (file == nullptr)
     {
         cerr << "Error: Could not open file '" << file_name << "' for reading." << endl;
-        return;
+        goto data_cleanup;
+    }
+    if (fseek(file, 0, SEEK_END) == -1 || (options.transfer_size = ftell(file)) == -1 || fseek(file, 0, SEEK_SET) == -1)
+    {
+        rewind(file);
+        cerr << "Warning: Could not obtain size of file '" << file_name << "', 'tsize' option will not be used." << endl;
+        options.transfer_size = -1;
     }
 
     do
@@ -191,57 +296,93 @@ void write(int socket_fd, struct sockaddr *address, socklen_t length, const stri
         if (retries++ > MAX_RETRIES)
         {
             cerr << "Error: Transfer of data failed. Server timed out." << endl;
-            goto file_disposal;
+            goto cleanup;
         }
 
-        WRQ_header(buffer, file_URL, mode, size);
-        if (sendto(socket_fd, buffer, size, 0, address, length) != size)
+        RQ_header(buffer, size, options);
+        if (sendto(socket_fd, buffer, size, 0, address, addr_length) != size)
         {
-            cerr << "Error: Transfer of data failed: " << strerror(errno) << endl;
-            goto file_disposal;
+            cerr << "Error: Transfer of data failed. Data could not be send fully.";
+            goto cleanup;
         }
-        getsockname(socket_fd, recieve_address, &length);
+        getsockname(socket_fd, recieve_address, &addr_length);
     } 
-    while ((size = recvfrom(socket_fd, ack_buff, ACK_BUFFER_SIZE, 0, recieve_address, &length)) == -1 || *ack_block_number != 0);
+    while ((size = recvfrom(socket_fd, ack_buff, ACK_BUFFER_SIZE, 0, recieve_address, &addr_length)) == -1 || 
+           (*ack_opcode == ACK && *ack_block_number != 0));
     ((sockaddr_in *)address)->sin_port = server.sin6_port;
     retries = 0;
 
-    if (*ack_opcode != ACK)
+    if (*ack_opcode == OACK)
     {
-        if (*ack_opcode == ERR)
+        try
         {
-            cerr << "Error: " << err_code_value(*block_number) << " Message: " << &buffer[4] << endl;
-            goto file_disposal;
+            negotiation = parse_OACK(ack_buff, size);
+        }
+        catch(const std::exception& e)
+        {
+            cerr << "Error: Could not parse recieved packet." << endl;
+            ERR_packet(buffer, size, ILLEGAL_TFTP, "Could no parse OACK datagram.");
+            sendto(socket_fd, buffer, size, 0, address, addr_length);
+            goto cleanup;
+        }
+        
+        if (negotiation.block_size <= data.block_size)
+        {
+            data.block_size = negotiation.block_size;
         }
         else
         {
-            cerr << "Error: Transfer of data failed. Malformed packet recieved." << endl;
-            goto file_disposal;
+            cerr << "Error: Server specified block size larger than offered." << endl;
+            ERR_packet(buffer, size, ILLEGAL_TFTP, "Block size larger than specified by client.");
+            sendto(socket_fd, buffer, size, 0, address, addr_length);
+            goto cleanup;
         }
+
+        if (data.timeout != 0 && negotiation.timeout != data.timeout)
+        {
+            set_timeout(socket_fd, DEFAULT_TIMEOUT);
+            cerr << "Warning: Server did not accept specified timeout of " << data.timeout 
+                 << " s. Default timeout of 1 s is used instead." << endl;
+        }
+    }
+    else if (*ack_opcode == ACK)
+    {
+        data.block_size = TFTP_DATA_SIZE;
+    }
+    else if (*ack_opcode == ERR) 
+    {
+        
+        cerr << "Error: " << err_code_value(*block_number) << " Message: " << &buffer[TFTP_HDR] << endl;
+        goto cleanup;
+    }
+    else
+    {
+        cerr << "Error: Transfer of data failed. Unexpected packet recieved." << endl;
+        goto cleanup;
     }
 
     for (uint16_t i = 1; ; i++)
     {
         *opcode = DATA;
         *block_number = htons(i);
-        size = fread(&buffer[4], 1, TFTP_DATA_SIZE, file);
-        size += 4;
+        size = fread(&buffer[TFTP_HDR], 1, data.block_size, file);
+        size += TFTP_HDR;
 
         do
         {
             if (retries++ > MAX_RETRIES)
             {
                 cerr << "Error: Transfer of data failed. Server timed out." << endl;
-                goto file_disposal;
+                goto cleanup;
             }
 
-            if (sendto(socket_fd, buffer, size, 0, address, length) != size)
+            if (sendto(socket_fd, buffer, size, 0, address, addr_length) != size)
             {
-                cerr << "Error: Transfer of data failed: " << strerror(errno) << endl;
-                goto file_disposal;
+                cerr << "Error: Transfer of data failed. Data could not be send fully." << endl;
+                goto cleanup;
             }
         }
-        while (recvfrom(socket_fd, ack_buff, ACK_BUFFER_SIZE, 0, recieve_address, &length) == -1 || 
+        while (recvfrom(socket_fd, ack_buff, ACK_BUFFER_SIZE, 0, recieve_address, &addr_length) == -1 || 
                         (*ack_block_number != *block_number && *ack_opcode == ACK)); 
         retries = 0;
         
@@ -249,82 +390,139 @@ void write(int socket_fd, struct sockaddr *address, socklen_t length, const stri
         {
             if (*ack_opcode == ERR)
             {
-                cerr << "Error: " << err_code_value(*block_number) << " Message: " << &buffer[4] << endl;
-                goto file_disposal;
+                cerr << "Error: " << err_code_value(*block_number) << " Message: " << &buffer[TFTP_HDR] << endl;
+                goto cleanup;
             }
             else
             {
-                cerr << "Error: Transfer of data failed. Malformed packet recieved." << endl;
-                goto file_disposal;
+                cerr << "Error: Transfer of data failed. Unexpected packet recieved." << endl;
+                goto cleanup;
             }
         }
 
-        if (size < TFTP_DATAGRAM_SIZE)
+        if (size < data.block_size + TFTP_HDR)
         {
             break;
         }
     }
 
-file_disposal:
+cleanup:
     fclose(file);
+data_cleanup:
+    delete[] buffer;
 }
 
-int get_MTU(sockaddr destination, socklen_t len)
+void set_timeout(int socket_fd, uint8_t timeout)
 {
-    struct ifaddrs *address = nullptr, *head = nullptr;
-    int socket_fd;
-    struct ifreq request;
-
-    if ((socket_fd = socket(destination.sa_family, SOCK_DGRAM, 0)) == -1)
+    struct timeval time_out;
+    time_out.tv_sec = timeout == 0 ? DEFAULT_TIMEOUT : timeout;
+    time_out.tv_usec = 0;
+    if (setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&time_out, sizeof(time_out)) == -1)
     {
-        cerr << "Error: Could not create socket." << endl;
+        cerr << "Warning: Timeout could not be set, program might freeze. Use Ctrl+C to terminate." << endl;
     }
+}
 
-    if (connect(socket_fd, &destination, len) == -1)
+int32_t get_MTU_of_used_if(sockaddr_in6 address, socklen_t lenght)
+{
+    sockaddr *destination = (sockaddr *)&address;
+    struct ifaddrs *current = nullptr, *head = nullptr;
+    struct ifreq request;
+    int socket_fd;
+    int32_t mtu = INT32_MAX;
+
+    if ((socket_fd = socket(destination->sa_family, SOCK_DGRAM, 0)) == -1)
     {
-        cerr << "Error: Could not connect socket." << endl;
         goto failed;
     }
 
-    if (getsockname(socket_fd, &destination, &len) == -1)
+    if (connect(socket_fd, destination, lenght) == -1)
     {
-        cerr << "Error: Could not obtain socket information." << endl;
+        goto failed;
+    }
+
+    if (getsockname(socket_fd, destination, &lenght) == -1)
+    {
         goto failed;
     }
 
     if (getifaddrs(&head) == -1)
     {
-        cerr << "Error: could not obtain interface addresses" << endl;
         goto failed;
     }
 
-    for (address = head; address != nullptr; address = address->ifa_next)
+    for (current = head; current != nullptr; current = current->ifa_next)
     {
-        if (address->ifa_addr != nullptr && address->ifa_addr->sa_family == destination.sa_family)
+        if (current->ifa_name != nullptr)
         {
-            strncpy(request.ifr_name, address->ifa_name, sizeof(request.ifr_name));
+            strncpy(request.ifr_name, current->ifa_name, sizeof(request.ifr_name));
             if (ioctl(socket_fd, SIOCGIFADDR, &request) == -1)
             {
-                cerr << "Error: Could not obtain interface IP address." << endl;
-                goto failed;
+                continue;
             }
 
-            if (((struct sockaddr_in *)&request.ifr_addr)->sin_addr.s_addr == ((struct sockaddr_in *)&destination)->sin_addr.s_addr)
+            if (request.ifr_addr.sa_family == destination->sa_family)
             {
-                if (ioctl(socket_fd, SIOCGIFMTU, &request) == -1)
+                if ((destination->sa_family == AF_INET && 
+                    ((struct sockaddr_in *)&request.ifr_addr)->sin_addr.s_addr == ((struct sockaddr_in *)destination)->sin_addr.s_addr) ||
+                    (destination->sa_family == AF_INET6 && 
+                    memcmp(&((struct sockaddr_in6 *)&request.ifr_addr)->sin6_addr, &((struct sockaddr_in6 *)destination)->sin6_addr, sizeof(struct in6_addr))))
                 {
-                    cerr << "Error: Could not obtain interface MTU." << endl;
-                    goto failed;
+                    if (ioctl(socket_fd, SIOCGIFMTU, &request) == -1)
+                    {
+                        continue;
+                    }
+                    
+                    mtu = request.ifr_mtu;
+                    break;
                 }
-                break;
             }
         }
     }
 
+failed:
+    close(socket_fd);
     freeifaddrs(head);
-    return request.ifr_mtu;
+    return mtu;
+}
+
+int32_t get_min_MTU(sockaddr destination)
+{
+    int socket_fd;
+    int32_t mtu = INT32_MAX;
+    struct ifaddrs *current = nullptr, *head = nullptr;
+    struct ifreq request;
+    
+    if ((socket_fd = socket(destination.sa_family, SOCK_DGRAM, 0)) == -1)
+    {
+        goto failed;
+    }
+
+    if (getifaddrs(&head) == -1)
+    {
+        goto failed;
+    }
+
+    for (current = head; current != nullptr; current = current->ifa_next)
+    {
+        if (current->ifa_name != nullptr)
+        {
+            strncpy(request.ifr_name, current->ifa_name, sizeof(request.ifr_name));
+            if (ioctl(socket_fd, SIOCGIFMTU, &request) == -1)
+            {
+                continue;
+            }
+            
+            if (mtu > request.ifr_mtu)
+            {
+                mtu = request.ifr_mtu;
+            }
+        }
+    }
 
 failed:
+    close(socket_fd);
     freeifaddrs(head);
-    return -1;
+    return mtu;
 }
+

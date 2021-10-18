@@ -1,47 +1,52 @@
 
 #include "TFTP.h"
 
-void RRQ_header(char *buffer, const string &file_URL, data_mode_t mode, ssize_t &size)
+void RQ_header(char *buffer, ssize_t &size, TFTP_options_t options)
 {
+    string value;
     uint16_t *opcode = (uint16_t *)buffer;
-    size = file_URL.size();
+    size = options.file_URL.size() + 3;
 
-    *opcode = RRQ;
-    strcpy(&buffer[2], file_URL.c_str());
+    *opcode = options.opcode;
+    strcpy(&buffer[2], options.file_URL.c_str());
 
-    if (mode == BINARY)
+    if (options.mode == BINARY)
     {
-        strcpy(&buffer[3 + size], "octet");
-        size += 9;
+        strcpy(&buffer[size], OCTET);
+        size += OCTET_LEN;
     }
     else
     {
-        strcpy(&buffer[3 + size], "netascii");
-        size += 12;
+        strcpy(&buffer[size], NETASCII);
+        size += NETASCII_LEN;
+    }
+
+    strcpy(&buffer[size], BLKSIZE);
+    size += BLKSIZE_LEN;
+    value = to_string(options.block_size);
+    strcpy(&buffer[size], value.c_str());
+    size += value.size() + 1;
+
+    if (options.transfer_size >= 0)
+    {
+        strcpy(&buffer[size], TSIZE);
+        size += TSIZE_LEN;
+        value = to_string(options.transfer_size);
+        strcpy(&buffer[size], value.c_str());
+        size += value.size() + 1;
+    }
+
+    if (options.timeout != 0)
+    {
+        strcpy(&buffer[size], TIMEOUT);
+        size += TIMEOUT_LEN;
+        value = to_string(options.timeout);
+        strcpy(&buffer[size], value.c_str());
+        size += value.size() + 1;
     }
 }
 
-void WRQ_header(char *buffer, const string &file_URL, data_mode_t mode, ssize_t &size)
-{
-    uint16_t *opcode = (uint16_t *)buffer;
-    size = file_URL.size();
-
-    *opcode = WRQ;
-    strcpy(&buffer[2], file_URL.c_str());
-
-    if (mode == BINARY)
-    {
-        strcpy(&buffer[3 + size], "octet");
-        size += 9;
-    }
-    else
-    {
-        strcpy(&buffer[3 + size], "netascii");
-        size += 12;
-    }
-}
-
-void ACK_header(char *buffer, uint16_t ack_number, ssize_t &size)
+void ACK_header(char *buffer, ssize_t &size, uint16_t ack_number)
 {
     uint16_t *opcode = (uint16_t *)buffer;
     uint16_t *block_number = (uint16_t *)&buffer[2];
@@ -52,35 +57,86 @@ void ACK_header(char *buffer, uint16_t ack_number, ssize_t &size)
     size = 4;
 }
 
+negotiation_t parse_OACK(char *buffer, ssize_t size)
+{
+    negotiation_t negotiation;
+    ssize_t done = 2;
+    string option;
+    string value;
+
+    while (done < size)
+    {
+        option = string(&buffer[done]);
+        done += option.size() + 1;
+        for_each(option.begin(), option.end(), [](char & c) 
+        {
+            c = tolower(c);
+        });
+
+        value = string(&buffer[done]);
+        done += value.size() + 1;
+
+        if (option == BLKSIZE)
+        {
+            negotiation.block_size = stoi(value);
+        }
+        else if (option == TIMEOUT)
+        {
+            negotiation.timeout = stoul(value);
+        }
+        else if (option == TSIZE)
+        {
+            negotiation.transfer_size = stol(value);
+        }    
+    }
+
+    return negotiation;
+}
+
 string err_code_value(uint16_t err_code)
 {
-    switch (ntohs(err_code))
+    switch (err_code)
     {
-        case 0:
+        case NOT_DEFINED:
             return "(0) Not defined, see error message (if any).";
 
-        case 1:
+        case FILE_NOT_FOUND:
             return "(1) File not found.";
 
-        case 2:
+        case ACCESS_VIOLATION:
             return "(2) Access violation.";
         
-        case 3:
+        case DISK_FULL:
             return "(3) Disk full or allocation exceeded.";
         
-        case 4:
+        case ILLEGAL_TFTP:
             return "(4) Illegal TFTP operation.";
         
-        case 5:
+        case UNKNOWN_ID:
             return "(5) Unknown transfer ID.";
         
-        case 6:
+        case FILE_EXIST:
             return "(6) File already exists.";
         
-        case 7:
+        case NO_USER:
             return "(7) No such user.";
+        
+        case BAD_OACK:
+            return "(8) Usupported option.";
     
         default:
             return "Uknonw error code.";
     }
+}
+
+void ERR_packet(char *buffer, ssize_t &size, err_code_t code, const char* message)
+{
+    uint16_t *opcode = (uint16_t *)buffer;
+    uint16_t *err_code = (uint16_t *)&buffer[2];
+
+    *opcode = ERR;
+    *err_code = code;
+    strcpy(&buffer[TFTP_HDR], message);
+
+    size = TFTP_HDR + strlen(message) + 1;
 }
