@@ -3,9 +3,10 @@
 
 void transfer(const arguments_t &arguments)
 {
-    struct sockaddr *address;
-    socklen_t address_len;
-    int socket_fd;
+    struct sockaddr *destination;
+    socklen_t destination_len;
+    struct timeval time_out;
+    int socket_fd, mtu;
 
     if (arguments.address_type == IPv4)
     {
@@ -13,8 +14,8 @@ void transfer(const arguments_t &arguments)
         server_v4.sin_addr = arguments.address.ipv4;
         server_v4.sin_family = AF_INET;
         server_v4.sin_port = arguments.port;
-        address = (struct sockaddr *)&server_v4;
-        address_len = sizeof(server_v4);
+        destination = (struct sockaddr *)&server_v4;
+        destination_len = sizeof(server_v4);
         socket_fd = socket(AF_INET , SOCK_DGRAM , 0);
     }
     else
@@ -23,8 +24,8 @@ void transfer(const arguments_t &arguments)
         server_v6.sin6_addr = arguments.address.ipv6;
         server_v6.sin6_family = AF_INET6;
         server_v6.sin6_port = arguments.port;
-        address = (struct sockaddr *)&server_v6;
-        address_len = sizeof(server_v6);
+        destination = (struct sockaddr *)&server_v6;
+        destination_len = sizeof(server_v6);
         socket_fd = socket(AF_INET6 , SOCK_DGRAM , 0);
     }
     if (socket_fd == -1)
@@ -33,18 +34,20 @@ void transfer(const arguments_t &arguments)
         return;
     }
 
-    struct timeval time_out;
+    mtu = get_MTU(*destination, destination_len);
+    cerr << "MTU: " << mtu << endl;
+
     time_out.tv_sec = arguments.timeout;
     time_out.tv_usec = 0;
     setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&time_out, sizeof(time_out));    
 
     if (arguments.transfer_mode == READ)
     {
-        read(socket_fd, address, address_len, arguments.file_URL, arguments.data_mode);
+        read(socket_fd, destination, destination_len, arguments.file_URL, arguments.data_mode);
     }
     else
     {
-        write(socket_fd, address, address_len, arguments.file_URL, arguments.data_mode);
+        write(socket_fd, destination, destination_len, arguments.file_URL, arguments.data_mode);
     }
 
     close(socket_fd);
@@ -151,7 +154,6 @@ void read(int socket_fd, struct sockaddr *address, socklen_t length, const strin
     }
     ACK_header(buffer, *block_number, size);
     sendto(socket_fd, buffer, size, 0, address, length);
-
 
 file_disposal:
     fclose(file);
@@ -265,4 +267,64 @@ void write(int socket_fd, struct sockaddr *address, socklen_t length, const stri
 
 file_disposal:
     fclose(file);
+}
+
+int get_MTU(sockaddr destination, socklen_t len)
+{
+    struct ifaddrs *address = nullptr, *head = nullptr;
+    int socket_fd;
+    struct ifreq request;
+
+    if ((socket_fd = socket(destination.sa_family, SOCK_DGRAM, 0)) == -1)
+    {
+        cerr << "Error: Could not create socket." << endl;
+    }
+
+    if (connect(socket_fd, &destination, len) == -1)
+    {
+        cerr << "Error: Could not connect socket." << endl;
+        goto failed;
+    }
+
+    if (getsockname(socket_fd, &destination, &len) == -1)
+    {
+        cerr << "Error: Could not obtain socket information." << endl;
+        goto failed;
+    }
+
+    if (getifaddrs(&head) == -1)
+    {
+        cerr << "Error: could not obtain interface addresses" << endl;
+        goto failed;
+    }
+
+    for (address = head; address != nullptr; address = address->ifa_next)
+    {
+        if (address->ifa_addr != nullptr && address->ifa_addr->sa_family == destination.sa_family)
+        {
+            strncpy(request.ifr_name, address->ifa_name, sizeof(request.ifr_name));
+            if (ioctl(socket_fd, SIOCGIFADDR, &request) == -1)
+            {
+                cerr << "Error: Could not obtain interface IP address." << endl;
+                goto failed;
+            }
+
+            if (((struct sockaddr_in *)&request.ifr_addr)->sin_addr.s_addr == ((struct sockaddr_in *)&destination)->sin_addr.s_addr)
+            {
+                if (ioctl(socket_fd, SIOCGIFMTU, &request) == -1)
+                {
+                    cerr << "Error: Could not obtain interface MTU." << endl;
+                    goto failed;
+                }
+                break;
+            }
+        }
+    }
+
+    freeifaddrs(head);
+    return request.ifr_mtu;
+
+failed:
+    freeifaddrs(head);
+    return -1;
 }

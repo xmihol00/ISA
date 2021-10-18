@@ -54,7 +54,7 @@ void ACK_header(char *buffer, uint16_t ack_number, ssize_t &size)
 
 string err_code_value(uint16_t err_code)
 {
-    switch (err_code)
+    switch (ntohs(err_code))
     {
         case 0:
             return "(0) Not defined, see error message (if any).";
