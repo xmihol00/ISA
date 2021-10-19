@@ -1,0 +1,12 @@
+Tato část dokumentu popisuje Trivial File Transfer Protocol (TFTP) i s jeho zpětně kompatibilním rozšířením
+o možnou specifikaci podmínek přenosu, jehož neoficiální zkratkou je TFTPv2. Rozšiřující podmínky zahrnují možnost
+klienta specifikovat velikost přenášeného bloku dat, specifikovat --timeout-- pro znovu odeslání datagramu
+a možnost získat velikost přenášeného souboru před začátkem přenosu jeho dat.
+
+TFTP je protokol aplikační vrstvy a jako transportní vrstvu využívá User Datagram Protocol (UDP). Protokol je bezstrátový,
+bezstrátovost zajišťuje na aplikační vsrtvě podobně jako TCP na vrstvě transportní, a to pomocí --ACK-- datagramů. 
+Nedochází ale k vytvoření spojení.
+
+TODO - UPD a TCP zmínka.
+
+V následujícím diagramu je vyjádřena komunikace mezi serverem a klientem.
