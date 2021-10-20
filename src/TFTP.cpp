@@ -72,7 +72,7 @@ negotiation_t parse_OACK(char *buffer, ssize_t size)
         {
             c = tolower(c);
         });
-
+        
         value = string(&buffer[done]);
         done += value.size() + 1;
 

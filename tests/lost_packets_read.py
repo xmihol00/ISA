@@ -8,11 +8,11 @@ DST_IP = "127.0.0.1"
 LISTEN_PORT = 69
 RAND_PORT = 5006
 
+sock_start = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock_start.bind((DST_IP, LISTEN_PORT))
+
 while True:
 #if True:
-    sock_start = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock_start.bind((DST_IP, LISTEN_PORT))
-
     data, addr = sock_start.recvfrom(1500)
     KLIENT_PORT = addr[1]
 

@@ -10,6 +10,7 @@ RAND_PORT = 5006
 
 sock_start = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock_start.bind((DST_IP, LISTEN_PORT))
+
 while True:
 #if True:
     data, addr = sock_start.recvfrom(1500)
@@ -17,15 +18,4 @@ while True:
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind((DST_IP, RAND_PORT))
-    sock.sendto(str.encode("\0\4\0\0"), addr)
-    sleep(0.05)
-    sock_start.sendto(str.encode("\0\4\0\0 Wrong PORT"), addr)
-    sleep(0.05)
-    sock.sendto(str.encode("\0\4\0\1"), addr)
-    sleep(0.05)
-    sock.sendto(str.encode("\0\4\0\2"), addr)
-    sleep(0.05)
-    sock_start.sendto(str.encode("\0\4\0\1 Wrong PORT"), addr)
-    sleep(0.05)
-    sock.sendto(str.encode("\0\4\0\3"), addr)
-
+    sock.sendto(str.encode("\0\6BLKSIZE\00099999\000"), addr)

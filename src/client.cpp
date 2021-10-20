@@ -135,7 +135,7 @@ void read(int socket_fd, struct sockaddr *address, socklen_t addr_length, transf
 
     if (*opcode == OACK)
     {
-        if (set_negotioation(socket_fd, address, addr_length, ack_buff, data))
+        if (set_negotioation(socket_fd, address, addr_length, buffer, size, data))
         {
             goto cleanup;
         }
@@ -313,9 +313,12 @@ void write(int socket_fd, struct sockaddr *address, socklen_t addr_length, trans
     ((sockaddr_in *)address)->sin_port = TID = recieved_address.sin6_port;
     retries = 0;
 
-    if (*ack_opcode == OACK && set_negotioation(socket_fd, address, addr_length, ack_buff, data))
+    if (*ack_opcode == OACK)
     {
-        goto cleanup;
+        if (set_negotioation(socket_fd, address, addr_length, ack_buff, size, data))
+        {
+            goto cleanup;
+        }
     }
     else if (*ack_opcode == ACK)
     {
@@ -331,6 +334,7 @@ void write(int socket_fd, struct sockaddr *address, socklen_t addr_length, trans
     else
     {
         cerr << "Error: Transfer of data failed. Unexpected packet recieved." << endl;
+        // TODO err
         goto cleanup;
     }
 
@@ -513,9 +517,8 @@ failed:
     return mtu;
 }
 
-bool set_negotioation(int socket_fd, struct sockaddr *address, socklen_t addr_length, char *buffer, transfer_data_t &data)
+bool set_negotioation(int socket_fd, struct sockaddr *address, socklen_t addr_length, char *buffer, ssize_t size, transfer_data_t &data)
 {
-    ssize_t size = 0;
     negotiation_t negotiation;
     
     try
@@ -542,12 +545,12 @@ bool set_negotioation(int socket_fd, struct sockaddr *address, socklen_t addr_le
     else
     {
         cerr << "Error: Server specified block size larger than offered." << endl;
-        ERR_packet(buffer, size, ILLEGAL_TFTP, "Block size larger than specified by client.");
+        ERR_packet(buffer, size, BAD_OACK, "Block size larger than specified by client.");
         sendto(socket_fd, buffer, size, 0, address, addr_length);
         return true;
     }
 
-    if (negotiation.timeout == 0)
+    if (data.timeout != 0 && negotiation.timeout == 0)
     {
         set_timeout(socket_fd, DEFAULT_TIMEOUT);
         cerr << "Warning: Server did not recognize timeout option. Default timeout of 1 s is used instead." << endl;
