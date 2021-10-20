@@ -10,3 +10,5 @@ Nedochází ale k vytvoření spojení.
 TODO - UPD a TCP zmínka.
 
 V následujícím diagramu je vyjádřena komunikace mezi serverem a klientem.
+
+#sudo service tftpd-hpa status

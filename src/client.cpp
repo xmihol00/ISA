@@ -90,17 +90,18 @@ void read(int socket_fd, struct sockaddr *address, socklen_t addr_length, transf
                                .transfer_size = 0, .timeout = data.timeout, .multicast = data.multicast};
     
 
-    char *buffer = new char[data.block_size + TFTP_HDR];
+    char *buffer = new char[data.block_size > TFTP_DATA_SIZE ? data.block_size + TFTP_HDR : TFTP_DATAGRAM_SIZE];
     uint16_t *opcode = (uint16_t *)buffer;
     uint16_t *block_number = (uint16_t *)&buffer[2];
+    uint16_t ack_number;
 
     char ack_buff[ACK_BUFFER_SIZE] = {0, };
-    uint16_t *ack_block_number = (uint16_t *)&ack_buff[2];
 
     ssize_t size;
     struct sockaddr_in6 recieved_address;
     recieved_address.sin6_port = ((sockaddr_in *)address)->sin_port;
     struct sockaddr *ptr_recieved_address = (struct sockaddr *) &recieved_address;
+    socklen_t recv_lenght = sizeof(recieved_address);
     
     string file_name = get_file_name(data.file_URL);
     FILE *file = fopen(file_name.c_str(), "w");
@@ -126,12 +127,13 @@ void read(int socket_fd, struct sockaddr *address, socklen_t addr_length, transf
             cerr << "Error: Transfer of data failed. Data could not be send fully." << endl;
             goto cleanup;
         }
-        getsockname(socket_fd, ptr_recieved_address, &addr_length);
     }
-    while ((size = recvfrom(socket_fd, buffer, data.block_size + TFTP_HDR, 0, ptr_recieved_address, &addr_length)) == -1);
+    while ((size = recvfrom(socket_fd, buffer, data.block_size + TFTP_HDR, 0, ptr_recieved_address, &recv_lenght)) == -1 || 
+           (*opcode == DATA && ntohs(*block_number) != 1));
     retries = 0;
     ((sockaddr_in *)address)->sin_port = TID = recieved_address.sin6_port;
-    
+    ack_number = *block_number;
+
     if (*opcode == OACK)
     {
         try
@@ -141,8 +143,8 @@ void read(int socket_fd, struct sockaddr *address, socklen_t addr_length, transf
         catch(const std::exception& e)
         {
             cerr << "Error: Could not parse datagram." << endl;
-            ERR_packet(buffer, size, ILLEGAL_TFTP, "Could no parse OACK datagram.");
-            sendto(socket_fd, buffer, size, 0, address, addr_length);
+            ERR_packet(ack_buff, size, ILLEGAL_TFTP, "Could no parse OACK datagram.");
+            sendto(socket_fd, ack_buff, size, 0, address, addr_length);
             goto cleanup;
         }
 
@@ -153,8 +155,8 @@ void read(int socket_fd, struct sockaddr *address, socklen_t addr_length, transf
         else
         {
             cerr << "Error: Server specified block size larger than offered." << endl;
-            ERR_packet(buffer, size, ILLEGAL_TFTP, "Block size larger than specified by client.");
-            sendto(socket_fd, buffer, size, 0, address, addr_length);
+            ERR_packet(ack_buff, size, ILLEGAL_TFTP, "Block size larger than specified by client.");
+            sendto(socket_fd, ack_buff, size, 0, address, addr_length);
             goto cleanup;
         }
 
@@ -168,12 +170,12 @@ void read(int socket_fd, struct sockaddr *address, socklen_t addr_length, transf
         if (negotiation.transfer_size > available_space())
         {
             cerr << "Error: Transfered file is larger than available disk space." << endl;
-            ERR_packet(buffer, size, DISK_FULL, "File size exeeds available disk space.");
-            sendto(socket_fd, buffer, size, 0, address, addr_length);
+            ERR_packet(ack_buff, size, DISK_FULL, "File size exeeds available disk space.");
+            sendto(socket_fd, ack_buff, size, 0, address, addr_length);
             goto cleanup;
         }
 
-        do
+        while(true)
         {
             do
             {
@@ -190,18 +192,21 @@ void read(int socket_fd, struct sockaddr *address, socklen_t addr_length, transf
                     goto cleanup;
                 }
             }
-            while ((size = recvfrom(socket_fd, buffer, data.block_size, 0, ptr_recieved_address, &addr_length)) == -1);
-            retries = 0;
+            while ((size = recvfrom(socket_fd, buffer, data.block_size, 0, ptr_recieved_address, &recv_lenght)) == -1 ||
+                   (recieved_address.sin6_port == TID && ntohs(*block_number) != 1 && *opcode == DATA));
 
             if (recieved_address.sin6_port != TID)
             {
-                cerr << "Warning: Recieved TID does not match the estabhlished one." << endl;
-                ERR_packet(buffer, size, UNKNOWN_ID, "Incorrect TID.");
-                sendto(socket_fd, buffer, size, 0, address, addr_length);
+                cerr << "Warning: Recieved TID does not match the estabhlished one, transfer continues." << endl;
+                ERR_packet(ack_buff, size, UNKNOWN_ID, "Incorrect TID.");
+                sendto(socket_fd, ack_buff, size, 0, address, addr_length);
+                retries--;
                 continue;
             }
+
+            retries = 0;
+            break;
         } 
-        while(false);
     }
     else
     {
@@ -219,13 +224,13 @@ void read(int socket_fd, struct sockaddr *address, socklen_t addr_length, transf
         {
             cerr << "Error: Transfer of data failed. Unexpected packet recieved." << endl;
             goto cleanup;
-        }
+        }    cerr << ptr_recieved_address << endl;
     }
 
     fwrite(&buffer[TFTP_HDR], 1, size - TFTP_HDR, file);
     while (size == data.block_size)
     {
-        do
+        while(true)
         {
             do
             {
@@ -234,25 +239,27 @@ void read(int socket_fd, struct sockaddr *address, socklen_t addr_length, transf
                     cerr << "Error: Transfer of data failed. Server timed out." << endl;
                     goto cleanup;
                 }
-                ACK_header(ack_buff, size, *block_number);
+                ACK_header(ack_buff, size, ack_number);
                 if (sendto(socket_fd, ack_buff, size, 0, address, addr_length) != size)
                 {
                     cerr << "Error: Transfer of data failed. Data could not be send fully." << endl;
                     goto cleanup;
                 }
             } 
-            while ((size = recvfrom(socket_fd, buffer, data.block_size, 0, ptr_recieved_address, &addr_length)) == -1 || 
-                    (ntohs(*block_number) != ntohs(*ack_block_number) + 1 && *opcode == DATA));
-                
+            while ((size = recvfrom(socket_fd, buffer, data.block_size, 0, ptr_recieved_address, &recv_lenght)) == -1 || 
+                   (recieved_address.sin6_port == TID && ntohs(*block_number) != ntohs(ack_number) + 1 && *opcode == DATA));
+            
             if (recieved_address.sin6_port != TID)
             {
-                cerr << "Warning: Recieved TID does not match the estabhlished one." << endl;
-                ERR_packet(buffer, size, UNKNOWN_ID, "Incorrect TID.");
-                sendto(socket_fd, buffer, size, 0, address, addr_length);
+                cerr << "Warning: Recieved TID does not match the estabhlished one, transfer continues." << endl;
+                ERR_packet(ack_buff, size, UNKNOWN_ID, "Incorrect TID.");
+                sendto(socket_fd, ack_buff, size, 0, address, addr_length);
                 continue;
             }
+
+            ack_number = *block_number;
+            break;
         }
-        while(false);
 
         if (*opcode != DATA)
         {
@@ -283,12 +290,12 @@ data_cleanup:
 void write(int socket_fd, struct sockaddr *address, socklen_t addr_length, transfer_data_t data)
 {
     uint8_t retries = 0;
-    in_port_t TID;
+    in_port_t TID = 0;
     negotiation_t negotiation;
     TFTP_options_t options = { .file_URL = data.file_URL, .opcode = WRQ, .mode = data.mode, .block_size = data.block_size, 
                                .transfer_size = 0, .timeout = data.timeout, .multicast = data.multicast };
     
-    char *buffer = new char[data.block_size + TFTP_HDR];
+    char *buffer = new char[data.block_size > TFTP_DATA_SIZE ? data.block_size + TFTP_HDR : TFTP_DATAGRAM_SIZE];
     uint16_t *opcode = (uint16_t *)buffer;
     uint16_t *block_number = (uint16_t *)&buffer[2];
 
@@ -296,10 +303,12 @@ void write(int socket_fd, struct sockaddr *address, socklen_t addr_length, trans
     uint16_t *ack_opcode = (uint16_t *)ack_buff;
     uint16_t *ack_block_number = (uint16_t *)&ack_buff[2];
 
-    ssize_t size;
+    ssize_t size = 0;
+    ssize_t err_size = ACK_BUFFER_SIZE;
     struct sockaddr_in6 recieved_address;
     recieved_address.sin6_port = ((sockaddr_in *)address)->sin_port;
     struct sockaddr *ptr_recieved_address = (struct sockaddr *) &recieved_address;
+    socklen_t recv_lenght = sizeof(recieved_address);
     
     string file_name = get_file_name(data.file_URL);
     FILE *file = fopen(file_name.c_str(), "r");
@@ -331,9 +340,8 @@ void write(int socket_fd, struct sockaddr *address, socklen_t addr_length, trans
             cerr << "Error: Transfer of data failed. Data could not be send fully.";
             goto cleanup;
         }
-        getsockname(socket_fd, ptr_recieved_address, &addr_length);
     } 
-    while ((size = recvfrom(socket_fd, ack_buff, ACK_BUFFER_SIZE, 0, ptr_recieved_address, &addr_length)) == -1 || 
+    while ((size = recvfrom(socket_fd, ack_buff, ACK_BUFFER_SIZE, 0, ptr_recieved_address, &recv_lenght)) == -1 || 
            (*ack_opcode == ACK && *ack_block_number != 0));
     
     ((sockaddr_in *)address)->sin_port = TID = recieved_address.sin6_port;
@@ -348,8 +356,8 @@ void write(int socket_fd, struct sockaddr *address, socklen_t addr_length, trans
         catch(const std::exception& e)
         {
             cerr << "Error: Could not parse recieved packet." << endl;
-            ERR_packet(buffer, size, ILLEGAL_TFTP, "Could no parse OACK datagram.");
-            sendto(socket_fd, buffer, size, 0, address, addr_length);
+            ERR_packet(ack_buff, size, ILLEGAL_TFTP, "Could no parse OACK datagram.");
+            sendto(socket_fd, ack_buff, size, 0, address, addr_length);
             goto cleanup;
         }
         
@@ -360,8 +368,8 @@ void write(int socket_fd, struct sockaddr *address, socklen_t addr_length, trans
         else
         {
             cerr << "Error: Server specified block size larger than offered." << endl;
-            ERR_packet(buffer, size, ILLEGAL_TFTP, "Block size larger than specified by client.");
-            sendto(socket_fd, buffer, size, 0, address, addr_length);
+            ERR_packet(ack_buff, err_size, ILLEGAL_TFTP, "Block size larger than specified by client.");
+            sendto(socket_fd, ack_buff, err_size, 0, address, addr_length);
             goto cleanup;
         }
 
@@ -395,7 +403,7 @@ void write(int socket_fd, struct sockaddr *address, socklen_t addr_length, trans
         size = fread(&buffer[TFTP_HDR], 1, data.block_size, file);
         size += TFTP_HDR;
 
-        do
+        while(true)
         {
             do
             {
@@ -411,19 +419,21 @@ void write(int socket_fd, struct sockaddr *address, socklen_t addr_length, trans
                     goto cleanup;
                 }
             }
-            while (recvfrom(socket_fd, ack_buff, ACK_BUFFER_SIZE, 0, ptr_recieved_address, &addr_length) == -1 || 
-                            (*ack_block_number != *block_number && *ack_opcode == ACK)); 
-            retries = 0;
+            while (recvfrom(socket_fd, ack_buff, ACK_BUFFER_SIZE, 0, ptr_recieved_address, &recv_lenght) == -1 || 
+                   (recieved_address.sin6_port == TID && *ack_block_number != *block_number && *ack_opcode == ACK)); 
 
             if (recieved_address.sin6_port != TID)
             {
-                cerr << "Warning: Recieved TID does not match the estabhlished one." << endl;
-                ERR_packet(buffer, size, UNKNOWN_ID, "Incorrect TID.");
-                sendto(socket_fd, buffer, size, 0, address, addr_length);
+                cerr << "Warning: Recieved TID does not match the estabhlished one, transfer continues." << endl;
+                ERR_packet(ack_buff, err_size, UNKNOWN_ID, "Incorrect TID.");
+                sendto(socket_fd, ack_buff, err_size, 0, address, addr_length);
+                retries--;
                 continue;
             }
+
+            retries = 0;
+            break;
         } 
-        while(false);
         
         if (*ack_opcode != ACK)
         {
