@@ -59,7 +59,7 @@ void ACK_header(char *buffer, ssize_t &size, uint16_t ack_number)
 
 negotiation_t parse_OACK(char *buffer, ssize_t size)
 {
-    negotiation_t negotiation;
+    negotiation_t negotiation { .block_size = -1, .transfer_size = -1, .timeout = 0 };
     ssize_t done = 2;
     string option;
     string value;

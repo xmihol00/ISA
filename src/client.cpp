@@ -85,9 +85,8 @@ void read(int socket_fd, struct sockaddr *address, socklen_t addr_length, transf
 {
     uint8_t retries = 0;
     in_port_t TID;
-    negotiation_t negotiation;
     TFTP_options_t options = { .file_URL = data.file_URL, .opcode = RRQ, .mode = data.mode, .block_size = data.block_size, 
-                               .transfer_size = 0, .timeout = data.timeout, .multicast = data.multicast};
+                               .transfer_size = 0, .timeout = data.timeout, .multicast = data.multicast };
     
 
     char *buffer = new char[data.block_size > TFTP_DATA_SIZE ? data.block_size + TFTP_HDR : TFTP_DATAGRAM_SIZE];
@@ -136,42 +135,8 @@ void read(int socket_fd, struct sockaddr *address, socklen_t addr_length, transf
 
     if (*opcode == OACK)
     {
-        try
+        if (set_negotioation(socket_fd, address, addr_length, ack_buff, data))
         {
-            negotiation = parse_OACK(buffer, size);
-        }
-        catch(const std::exception& e)
-        {
-            cerr << "Error: Could not parse datagram." << endl;
-            ERR_packet(ack_buff, size, ILLEGAL_TFTP, "Could no parse OACK datagram.");
-            sendto(socket_fd, ack_buff, size, 0, address, addr_length);
-            goto cleanup;
-        }
-
-        if (negotiation.block_size <= data.block_size)
-        {
-            data.block_size = negotiation.block_size + TFTP_HDR;
-        }
-        else
-        {
-            cerr << "Error: Server specified block size larger than offered." << endl;
-            ERR_packet(ack_buff, size, ILLEGAL_TFTP, "Block size larger than specified by client.");
-            sendto(socket_fd, ack_buff, size, 0, address, addr_length);
-            goto cleanup;
-        }
-
-        if (data.timeout != 0 && negotiation.timeout != data.timeout)
-        {
-            set_timeout(socket_fd, DEFAULT_TIMEOUT);
-            cerr << "Warning: Server did not accept specified timeout of " << data.timeout 
-                 << " s. Default timeout of 1 s is used instead." << endl;
-        }
-
-        if (negotiation.transfer_size > available_space())
-        {
-            cerr << "Error: Transfered file is larger than available disk space." << endl;
-            ERR_packet(ack_buff, size, DISK_FULL, "File size exeeds available disk space.");
-            sendto(socket_fd, ack_buff, size, 0, address, addr_length);
             goto cleanup;
         }
 
@@ -206,10 +171,12 @@ void read(int socket_fd, struct sockaddr *address, socklen_t addr_length, transf
 
             retries = 0;
             break;
-        } 
+        }
+        ack_number = htons(1);
     }
     else
     {
+        cerr << "Warning: Server does not support Option Negotiation." << endl;
         data.block_size = TFTP_DATAGRAM_SIZE;
     }
 
@@ -224,7 +191,7 @@ void read(int socket_fd, struct sockaddr *address, socklen_t addr_length, transf
         {
             cerr << "Error: Transfer of data failed. Unexpected packet recieved." << endl;
             goto cleanup;
-        }    cerr << ptr_recieved_address << endl;
+        }
     }
 
     fwrite(&buffer[TFTP_HDR], 1, size - TFTP_HDR, file);
@@ -291,7 +258,6 @@ void write(int socket_fd, struct sockaddr *address, socklen_t addr_length, trans
 {
     uint8_t retries = 0;
     in_port_t TID = 0;
-    negotiation_t negotiation;
     TFTP_options_t options = { .file_URL = data.file_URL, .opcode = WRQ, .mode = data.mode, .block_size = data.block_size, 
                                .transfer_size = 0, .timeout = data.timeout, .multicast = data.multicast };
     
@@ -347,41 +313,13 @@ void write(int socket_fd, struct sockaddr *address, socklen_t addr_length, trans
     ((sockaddr_in *)address)->sin_port = TID = recieved_address.sin6_port;
     retries = 0;
 
-    if (*ack_opcode == OACK)
+    if (*ack_opcode == OACK && set_negotioation(socket_fd, address, addr_length, ack_buff, data))
     {
-        try
-        {
-            negotiation = parse_OACK(ack_buff, size);
-        }
-        catch(const std::exception& e)
-        {
-            cerr << "Error: Could not parse recieved packet." << endl;
-            ERR_packet(ack_buff, size, ILLEGAL_TFTP, "Could no parse OACK datagram.");
-            sendto(socket_fd, ack_buff, size, 0, address, addr_length);
-            goto cleanup;
-        }
-        
-        if (negotiation.block_size <= data.block_size)
-        {
-            data.block_size = negotiation.block_size;
-        }
-        else
-        {
-            cerr << "Error: Server specified block size larger than offered." << endl;
-            ERR_packet(ack_buff, err_size, ILLEGAL_TFTP, "Block size larger than specified by client.");
-            sendto(socket_fd, ack_buff, err_size, 0, address, addr_length);
-            goto cleanup;
-        }
-
-        if (data.timeout != 0 && negotiation.timeout != data.timeout)
-        {
-            set_timeout(socket_fd, DEFAULT_TIMEOUT);
-            cerr << "Warning: Server did not accept specified timeout of " << data.timeout 
-                 << " s. Default timeout of 1 s is used instead." << endl;
-        }
+        goto cleanup;
     }
     else if (*ack_opcode == ACK)
     {
+        cerr << "Warning: Server does not support Option Negotiation." << endl;
         data.block_size = TFTP_DATA_SIZE;
     }
     else if (*ack_opcode == ERR) 
@@ -575,3 +513,63 @@ failed:
     return mtu;
 }
 
+bool set_negotioation(int socket_fd, struct sockaddr *address, socklen_t addr_length, char *buffer, transfer_data_t &data)
+{
+    ssize_t size = 0;
+    negotiation_t negotiation;
+    
+    try
+    {
+        negotiation = parse_OACK(buffer, size);
+    }
+    catch(const std::exception& e)
+    {
+        cerr << "Error: Could not parse datagram." << endl;
+        ERR_packet(buffer, size, ILLEGAL_TFTP, "Could no parse OACK datagram.");
+        sendto(socket_fd, buffer, size, 0, address, addr_length);
+        return true;
+    }
+
+    if (negotiation.block_size == -1)
+    {
+        cerr << "Warning: Server did not recognize block size option. Default size of 512 B is used instead" << endl;
+        data.block_size = TFTP_DATAGRAM_SIZE;
+    }
+    else if (negotiation.block_size <= data.block_size)
+    {
+        data.block_size = negotiation.block_size + TFTP_HDR;
+    }
+    else
+    {
+        cerr << "Error: Server specified block size larger than offered." << endl;
+        ERR_packet(buffer, size, ILLEGAL_TFTP, "Block size larger than specified by client.");
+        sendto(socket_fd, buffer, size, 0, address, addr_length);
+        return true;
+    }
+
+    if (negotiation.timeout == 0)
+    {
+        set_timeout(socket_fd, DEFAULT_TIMEOUT);
+        cerr << "Warning: Server did not recognize timeout option. Default timeout of 1 s is used instead." << endl;
+    }
+    else if (data.timeout != 0 && negotiation.timeout != data.timeout)
+    {
+        set_timeout(socket_fd, DEFAULT_TIMEOUT);
+        cerr << "Warning: Server did not accept specified timeout of " << data.timeout 
+             << " s. Default timeout of 1 s is used instead." << endl;
+    }
+
+    if (negotiation.transfer_size == -1)
+    {
+        cerr << "Warning: Server did not recognize transfer size option. Transfer continues." << endl;
+    }
+    else if (negotiation.transfer_size > available_space())
+    {
+        cerr << "Error: Transfered file is larger than available disk space." << endl;
+        ERR_packet(buffer, size, DISK_FULL, "File size exeeds available disk space.");
+        sendto(socket_fd, buffer, size, 0, address, addr_length);
+        return true;
+    }
+
+    return false;
+}

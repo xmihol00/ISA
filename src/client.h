@@ -39,3 +39,5 @@ int32_t get_MTU_of_used_if(sockaddr_in6 address, socklen_t lenght);
 int32_t get_min_MTU(sockaddr destination);
 
 void set_timeout(int socket_fd, uint8_t timeout);
+
+bool set_negotioation(int socket_fd, struct sockaddr *address, socklen_t addr_length, char *buffer, transfer_data_t &data);
