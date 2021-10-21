@@ -59,3 +59,5 @@ bool parse_line(const string &line, arguments_t &arguments);
 string get_file_name(const string &file_URL);
 
 long available_space();
+
+void print_summary(const string &file, transfer_mode_t mode, int blksize, unsigned packet_count, long data_size, int lost, int lost_size, double time);

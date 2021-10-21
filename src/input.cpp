@@ -264,3 +264,24 @@ long available_space()
 
     return stats.f_bsize * stats.f_bavail;
 }
+
+void print_summary(const string &file, transfer_mode_t mode, int blksize, unsigned datagram_count, long data_size, int lost, int lost_size, double time)
+{
+    if (mode == READ)
+    {
+        cout << "Reading file '" << file << "' succeeded." << endl;
+    }
+    else
+    {
+        cout << "Writing file '" << file << "' succeeded." << endl;
+    }
+
+    cout << "Transfer summary" << endl;
+    cout << "\t\t- total transfer time: "  << time << "," << endl;
+    cout << "\t\t- " << data_size << " B of data transfered in " << datagram_count << " datagrams of a size of " << blksize << " B," << endl;
+    
+    if (lost > 0)
+    {
+        cout << "\t\t- " << lost << " datagrams have been lost of overall size " << lost_size << " B and had to be retransmitted." << endl;
+    }
+}
