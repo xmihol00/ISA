@@ -27,7 +27,7 @@ void RQ_header(char *buffer, ssize_t &size, TFTP_options_t options)
     strcpy(&buffer[size], value.c_str());
     size += value.size() + 1;
 
-    if (options.transfer_size >= 0)
+    if (options.transfer_size >= 0 && options.mode == BINARY)
     {
         strcpy(&buffer[size], TSIZE);
         size += TSIZE_LEN;
@@ -57,7 +57,7 @@ void ACK_header(char *buffer, ssize_t &size, uint16_t ack_number)
     size = 4;
 }
 
-negotiation_t parse_OACK(char *buffer, ssize_t size)
+negotiation_t parse_OACK(char *buffer, ssize_t size, bool blksize, bool timeout, bool tsize)
 {
     negotiation_t negotiation { .block_size = -1, .transfer_size = -1, .timeout = 0 };
     ssize_t done = 2;
@@ -76,18 +76,27 @@ negotiation_t parse_OACK(char *buffer, ssize_t size)
         value = string(&buffer[done]);
         done += value.size() + 1;
 
-        if (option == BLKSIZE)
+        if (option == BLKSIZE && blksize)
         {
             negotiation.block_size = stoi(value);
         }
-        else if (option == TIMEOUT)
+        else if (option == TIMEOUT && timeout)
         {
-            negotiation.timeout = stoul(value);
+            size_t res = stoul(value);
+            if (res > UINT8_MAX)
+            {
+                throw exception();    
+            }
+            negotiation.timeout = res;
         }
-        else if (option == TSIZE)
+        else if (option == TSIZE && tsize)
         {
             negotiation.transfer_size = stol(value);
-        }    
+        }
+        else
+        {
+            throw exception();
+        } 
     }
 
     return negotiation;
@@ -122,7 +131,7 @@ string err_code_value(uint16_t err_code)
             return "(7) No such user.";
         
         case BAD_OACK:
-            return "(8) Usupported option.";
+            return "(8) Option negotiation failed.";
     
         default:
             return "Uknonw error code.";

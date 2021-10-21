@@ -5,6 +5,7 @@ using namespace std;
 #include "input.h"
 #include "TFTP.h"
 
+#include <chrono>
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
@@ -18,21 +19,22 @@ using namespace std;
 #define MAX_IPv4_HDR 60
 #define UDP_HDR 8
 #define IPv6_HDR 40
+#define PADDING 2
 
 typedef struct
 {
-    const string &file_URL;
-    data_mode_t mode; 
-    int32_t block_size;
-    bool multicast;
-    uint8_t timeout;
+    const string    &file_URL;
+    data_mode_t     mode; 
+    int32_t         block_size;
+    bool            multicast;
+    uint8_t         timeout;
 } transfer_data_t;
 
 void transfer(const arguments_t &arguments);
 
-void read(int socket_fd, struct sockaddr *address, socklen_t length, transfer_data_t data);
+transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t length, transfer_data_t data);
 
-void write(int socket_fd, struct sockaddr *address, socklen_t length, transfer_data_t data);
+transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t length, transfer_data_t data);
 
 int32_t get_MTU_of_used_if(sockaddr_in6 address, socklen_t lenght);
 

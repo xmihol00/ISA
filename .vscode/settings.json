@@ -48,6 +48,8 @@
         "ios": "cpp",
         "iostream": "cpp",
         "queue": "cpp",
-        "stdexcept": "cpp"
-    }
+        "stdexcept": "cpp",
+        "chrono": "cpp"
+    },
+    "C_Cpp.errorSquiggles": "Disabled"
 }

@@ -265,23 +265,100 @@ long available_space()
     return stats.f_bsize * stats.f_bavail;
 }
 
-void print_summary(const string &file, transfer_mode_t mode, int blksize, unsigned datagram_count, long data_size, int lost, int lost_size, double time)
+ssize_t fread_to_netascii(FILE *file, ssize_t block_size, char *buffer)
 {
-    if (mode == READ)
+    int c = 0;
+    ssize_t i;
+    for (i = 0; i < block_size && (c = fgetc(file)) != EOF; i++)
     {
-        cout << "Reading file '" << file << "' succeeded." << endl;
+        if (c == LF)
+        {
+            buffer[i++] = CR;
+        }
+
+        buffer[i] = c;
+
+        if (c == CR)
+        {
+            buffer[++i] = '\0';
+        }
+    }
+    
+    return i;
+}
+
+bool fwrite_from_netascii(FILE *file, ssize_t size, char *buffer)
+{
+    for (ssize_t i = 0; i < size; i++)
+    {
+        if (buffer[i] == CR)
+        {
+            i++;
+            if (buffer[i] == LF)
+            {
+                putc('\n', file);
+            }
+            else if (buffer[i] == '\0')
+            {
+                putc(CR, file);
+            }
+            else
+            {
+                return true;
+            }
+        }
+        else
+        {
+            putc(buffer[i], file);
+        }
+    }
+
+    return false;
+}
+
+void print_summary(const transfer_summary_t &summary, system_clock::time_point start, system_clock::time_point end)
+{
+    if (summary.success)
+    {
+        if (summary.mode == READ)
+        {
+            cout << "Reading file '" << summary.file << "' succeeded." << endl;
+
+            cout << "Transfer summary:" << endl;
+            cout << "   - " << (end - start) / milliseconds(1) << " ms elapsed during the transfer," << endl;
+            cout << "   - " << summary.data_size << " B of data were recieved" << " in " 
+                            << summary.datagram_count << " datagram" << (summary.datagram_count > 1 ? "s" : "") << " of maximum size " 
+                            << summary.blksize << " B" << (summary.lost_count > 0 ? "," : ".") << endl;
+            
+            if (summary.lost_count > 0)
+            {
+                cout << "     additional " << summary.lost_count << " datagrams carrying data may have been lost, which compounds up to " << summary.lost_size << " B." << endl;
+            }
+        }
+        else
+        {
+            cout << "Writing file '" << summary.file << "' succeeded." << endl;
+
+            cout << "Transfer summary:" << endl;
+            cout << "   - " << (end - start) / milliseconds(1) << " ms elapsed during the transfer," << endl;
+            cout << "   - " << summary.data_size << " B of data were sent" << " in " 
+                            << summary.datagram_count << " datagram" << (summary.datagram_count > 1 ? "s" : "") << " of maximum size " 
+                            << summary.blksize << " B" << (summary.lost_count > 0 ? "," : ".") << endl;
+            
+            if (summary.lost_count > 0)
+            {
+                cout << "     of which " << summary.lost_count << " datagrams carrying data may have been lost of overall data size " << summary.lost_size << " B." << endl;
+            }
+        }
     }
     else
     {
-        cout << "Writing file '" << file << "' succeeded." << endl;
-    }
+        cout << (summary.mode == READ ? "Reading file '" : "Writing file '") << summary.file << "' faild." << endl;
 
-    cout << "Transfer summary" << endl;
-    cout << "\t\t- total transfer time: "  << time << "," << endl;
-    cout << "\t\t- " << data_size << " B of data transfered in " << datagram_count << " datagrams of a size of " << blksize << " B," << endl;
-    
-    if (lost > 0)
-    {
-        cout << "\t\t- " << lost << " datagrams have been lost of overall size " << lost_size << " B and had to be retransmitted." << endl;
-    }
+        cout << "Transfer summary:" << endl;
+        cout << "   - " << (end - start) / milliseconds(1) << " ms elapsed before failure," << endl;
+        cout << "   - " << summary.data_size << " B of data " << (summary.mode == READ ? "recieved" : "sent") << " before failure occured in " 
+                        << summary.datagram_count << " datagram" << (summary.datagram_count != 1 ? "s" : "") << " of maximum size " 
+                        << summary.blksize << " B." << endl;   
+    }    
 }

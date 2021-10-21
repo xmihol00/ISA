@@ -54,20 +54,20 @@ enum err_code_t
 
 typedef struct
 {
-    const string &file_URL;
-    opcode_t opcode;
-    data_mode_t mode;
-    int block_size;
-    long transfer_size;
-    uint8_t timeout;
-    bool multicast;
+    const string    &file_URL;
+    opcode_t        opcode;
+    data_mode_t     mode;
+    int             block_size;
+    long            transfer_size;
+    uint8_t         timeout;
+    bool            multicast;
 } TFTP_options_t;
 
 typedef struct
 {
-    int block_size;
-    long transfer_size;
-    uint8_t timeout;
+    int         block_size;
+    long        transfer_size;
+    uint8_t     timeout;
 } negotiation_t;
 
 void RQ_header(char *buffer, ssize_t &size, TFTP_options_t options);
@@ -78,4 +78,4 @@ void ERR_packet(char *buffer, ssize_t &size, err_code_t code, const char* messag
 
 string err_code_value(uint16_t err_code);
 
-negotiation_t parse_OACK(char *buffer, ssize_t size);
+negotiation_t parse_OACK(char *buffer, ssize_t size, bool blksize, bool timeout, bool tsize);
