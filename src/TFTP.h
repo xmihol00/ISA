@@ -54,28 +54,61 @@ enum err_code_t
 
 typedef struct
 {
-    const string    &file_URL;
-    opcode_t        opcode;
-    data_mode_t     mode;
-    int             block_size;
-    long            transfer_size;
-    uint8_t         timeout;
-    bool            multicast;
+    const string    &file_URL;      // cesta a jmeno souboru
+    opcode_t        opcode;         // opcode TFTP packetu
+    data_mode_t     mode;           // typ zakodovani prenasenych dat
+    int             block_size;     // velikost prenaseneho bloku dat
+    long            transfer_size;  // velikost prenaseneho souboru, defaultne 0
+    uint8_t         timeout;        // doba timeout v s, defaultne 0
+    bool            multicast;      // signalizuje pozuiti muticastu, defaultne false
 } TFTP_options_t;
 
 typedef struct
 {
-    int         block_size;
-    long        transfer_size;
-    uint8_t     timeout;
+    int         block_size;         // velikost prenaseneho bloku, defaultne -1
+    long        transfer_size;      // velikost prenaseneho souboru, defualtne -1
+    uint8_t     timeout;            // timeout v s, defaultne 0 
 } negotiation_t;
 
+/**
+ * @brief Vytvori RRQ nebo WRQ header potencionalne s rozsirujicimi moznostmi prenosu.
+ * @param buffer buffer, do ktereho budou vepsana data.
+ * @param size velikost zapsanych dat v bytech.
+ * @param options podminky prenosu.
+ */
 void RQ_header(char *buffer, ssize_t &size, TFTP_options_t options);
 
+/**
+ * @brief Vytvori ACK header.
+ * @param bufffer buffer, do ktereho budou vepsana data.
+ * @param size velikost zapsanych dat.
+ * @param asc_number cislo paketu, naktery je vytvaren ACK header.
+ */
 void ACK_header(char *buffer, ssize_t &size, uint16_t ack_number);
 
+/**
+ * @brief Vytvori ERR header.
+ * @param bufffer buffer, do ktereho budou vepsana data.
+ * @param size velikost zapsanych dat.
+ * @param code kod chyby.
+ * @param message chybova zprava.
+ */
 void ERR_packet(char *buffer, ssize_t &size, err_code_t code, const char* message);
 
+/**
+ * @brief Prelozi kod chyby na jeji textovy popis.
+ * @param err_code kod chyby.
+ * @return textova reprezentace chyby.
+ */
 string err_code_value(uint16_t err_code);
 
+/**
+ * @brief Ziska s OACK header hodnoty podminek prijatych serverem
+ * @param buffer OACK packet.
+ * @param size velikost dat packetu.
+ * @param blksize true, pokud byl zaslan dotaz na velikost bloku, jinak false.
+ * @param timeout true, pokud byl zaslan dotaz na timeout, jinak false.
+ * @param tsize true, pokud byl zaslan dotaz na velikost prenaseneho souboru, jinak false.
+ * @return ziskane nebo defaultni hodnoty podminek.
+ */
 negotiation_t parse_OACK(char *buffer, ssize_t size, bool blksize, bool timeout, bool tsize);

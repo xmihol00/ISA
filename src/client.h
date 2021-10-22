@@ -23,23 +23,68 @@ using namespace std;
 
 typedef struct
 {
-    const string    &file_URL;
-    data_mode_t     mode; 
-    int32_t         block_size;
-    bool            multicast;
-    uint8_t         timeout;
+    const string    &file_URL;      // cesta a jmeno souboru
+    data_mode_t     mode;           // typ prenosu
+    int32_t         block_size;     // velikost jednoho bloku prenesenych dat v B
+    bool            multicast;      // true, pokud multicast, jinak flase
+    uint8_t         timeout;        // doba timeoutu v s
 } transfer_data_t;
 
+/**
+ * @brief Provede prenos souboru.
+ * @param argumets argumety prenosu.
+ */
 void transfer(const arguments_t &arguments);
 
-transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t length, transfer_data_t data);
+/**
+ * @brief Provede prenos souboru ze serveru na klienta.
+ * @param socket_fd file descriptor pouziteho socketu.
+ * @param address adresa serveru.
+ * @param addr_length delka adresy.
+ * @param data data o provadenem prenosu.
+ * @return shrnuti prenosu.
+ */
+transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_length, transfer_data_t data);
 
-transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t length, transfer_data_t data);
+/**
+ * @brief Provede prenos souboru z klinta na server.
+ * @param socket_fd file descriptor socketu.
+ * @param address adresa serveru.
+ * @param addr_lenght delka adresy.
+ * @param data data o provadenem prenosu.
+ * @return shrnuti prenosu.
+ */
+transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t addr_length, transfer_data_t data);
 
+/**
+ * @brief Ziska MTU pouziteho zarizeni pri odesilani na danou adresu.
+ * @param address adresa prijemce.
+ * @param lenght delka adresy.
+ * @return velikost MTU rozhrani.
+ */
 int32_t get_MTU_of_used_if(sockaddr_in6 address, socklen_t lenght);
 
-int32_t get_min_MTU(sockaddr destination);
+/**
+ * @brief ziska nejmensi MTU z rozhrani na systemu.
+ * @param destination adresa destinace.
+ * @return nejmensi velikost MTU na systemu.
+ */
+int32_t get_min_MTU(sa_family_t address_family);
 
+/**
+ * @brief Nastavi timeout socketu.
+ * @param socket_fd file descriptor socketu.
+ * @param timeout nastavovany timeout.
+ */
 void set_timeout(int socket_fd, uint8_t timeout);
 
+/**
+ * @brief Nastavi podminky prenosu odsouhlasene serverem.
+ * @param socket_fd file descriptor socketu pouzivaneho pro kominakci se serverem.
+ * @param address adresa serveru.
+ * @param addr_lenght delka adresy.
+ * @param buffer buffer obsahujcic OACK zpravu od serveru.
+ * @param size velikost zpravy v bufferu.
+ * @param data vepise ziskane podminky odsouhlasene serverem.
+ */
 bool set_negotioation(int socket_fd, struct sockaddr *address, socklen_t addr_length, char *buffer, ssize_t size, transfer_data_t &data);

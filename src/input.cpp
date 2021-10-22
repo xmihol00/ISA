@@ -7,23 +7,23 @@ void help_msg()
 
 bool parse_line(const string &line, arguments_t &arguments)
 {
-    if (line == "q")
+    if (line == "q" || line == "exit") // vypnuti apliakce
     {
         exit(0);
     }
-    else if (line == "?" || line == "h")
+    else if (line == "?" || line == "h") // napoveda
     {
         help_msg();
         return false;
     }
-    else if (line == "")
+    else if (line == "") // nic
     {
         return false;
     }
 
-    bool mode{false};
-    long converter{0};
-    char *endptr{nullptr};
+    bool mode = false;
+    long converter = 0;
+    char *endptr = nullptr;
 
     arguments.file_URL = string();
     arguments.address_type = UNSET;
@@ -34,9 +34,9 @@ bool parse_line(const string &line, arguments_t &arguments)
     arguments.block_size = 0;
 
     istringstream stream(line);
-    for (string word; stream >> word;)
+    for (string word; stream >> word;) // prochazeni slov ve vstupnim radku
     {
-        if (word == "-R")
+        if (word == "-R") // cteni
         {
             if (mode)
             {
@@ -46,7 +46,7 @@ bool parse_line(const string &line, arguments_t &arguments)
             mode = true;
             arguments.transfer_mode = READ;
         }
-        else if (word == "-W")
+        else if (word == "-W") // zapis
         {
             if (mode)
             {
@@ -56,21 +56,22 @@ bool parse_line(const string &line, arguments_t &arguments)
             mode = true;
             arguments.transfer_mode = WRITE;
         }
-        else if (word == "-d")
+        else if (word == "-d") // cesta a jmeno souboru
         {
-            if (!(stream >> arguments.file_URL))
+            if (!(stream >> arguments.file_URL)) // ziskani hodnoty
             {
                 cerr << "Error: -d option requires a parameter. Type '?' or 'h' for help." << endl;
                 return false;
             }
         }
-        else if (word == "-t")
+        else if (word == "-t") // timeout
         {
-            if (!(stream >> word))
+            if (!(stream >> word)) // ziskani hodnoty
             {
                 cerr << "Error: -t option requires a parameter. Type '?' or 'h' for help." << endl;
                 return false;
             }
+            // prevod na cislo a kontrola rozsahu
             converter = strtol(word.c_str(), &endptr, 10);
             if (converter < 0L || converter > 255L)
             {
@@ -84,13 +85,14 @@ bool parse_line(const string &line, arguments_t &arguments)
             }
             arguments.timeout = (uint8_t)converter;
         }
-        else if (word == "-s")
+        else if (word == "-s") // velikost prenaseneho bloku
         {
             if (!(stream >> word))
             {
                 cerr << "Error: -s option requires a parameter. Type '?' or 'h' for help." << endl;
                 return false;
             }
+            // prevod na cislo a kontrola rozsahu
             converter = strtol(word.c_str(), &endptr, 10);
             if (converter < 0L || converter > INT32_MAX)
             {
@@ -104,20 +106,20 @@ bool parse_line(const string &line, arguments_t &arguments)
             }
             arguments.block_size = (int)converter;
         }
-        else if (word == "-a")
+        else if (word == "-a") // adresa serveru
         {
-            if (!(stream >> word))
+            if (!(stream >> word)) // ziskani adresy
             {
                 cerr << "Error: -a option requires a parameter. Type '?' or 'h' for help." << endl;
                 return false;
             }
             size_t pos = word.find(',');
             string address;
-            if (pos != string::npos)
+            if (pos != string::npos) // mezi carkou a IP neni mezera
             {
                 address = word.substr(0, pos);
 
-                if (pos + 1 == word.size())
+                if (pos + 1 == word.size()) // mezi carkou a portem je mezera
                 {
                     if (!(stream >> word))
                     {

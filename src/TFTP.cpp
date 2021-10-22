@@ -5,11 +5,12 @@ void RQ_header(char *buffer, ssize_t &size, TFTP_options_t options)
 {
     string value;
     uint16_t *opcode = (uint16_t *)buffer;
-    size = options.file_URL.size() + 3;
+    size = options.file_URL.size() + 3; // 0 terminating byte a + 2 byty z opcode
 
-    *opcode = options.opcode;
-    strcpy(&buffer[2], options.file_URL.c_str());
+    *opcode = options.opcode; // nastaveni opcode RRQ/WRQ
+    strcpy(&buffer[2], options.file_URL.c_str()); // nsataveni URL prenaseneho souboru
 
+    // nastaveni kodovani prenosu
     if (options.mode == BINARY)
     {
         strcpy(&buffer[size], OCTET);
@@ -21,12 +22,14 @@ void RQ_header(char *buffer, ssize_t &size, TFTP_options_t options)
         size += NETASCII_LEN;
     }
 
+    // vzdy se nastavi blocksize, pokud nezadal uzivatel, tak na zaklade min MTU
     strcpy(&buffer[size], BLKSIZE);
     size += BLKSIZE_LEN;
     value = to_string(options.block_size);
     strcpy(&buffer[size], value.c_str());
     size += value.size() + 1;
 
+    // nastaveni tsize, pokud je prenos binarni, pri netascii to neni mozne
     if (options.transfer_size >= 0 && options.mode == BINARY)
     {
         strcpy(&buffer[size], TSIZE);
@@ -36,6 +39,7 @@ void RQ_header(char *buffer, ssize_t &size, TFTP_options_t options)
         size += value.size() + 1;
     }
 
+    // nastaveni timeout, pokud jej uzivatel zadal
     if (options.timeout != 0)
     {
         strcpy(&buffer[size], TIMEOUT);
@@ -48,9 +52,11 @@ void RQ_header(char *buffer, ssize_t &size, TFTP_options_t options)
 
 void ACK_header(char *buffer, ssize_t &size, uint16_t ack_number)
 {
+    // ziskani pozic pro hodnoty
     uint16_t *opcode = (uint16_t *)buffer;
     uint16_t *block_number = (uint16_t *)&buffer[2];
 
+    // nastaveni hodnot opcode a block number
     *opcode = ACK;
     *block_number = ack_number;
     buffer[4] = (char)0;
@@ -59,6 +65,7 @@ void ACK_header(char *buffer, ssize_t &size, uint16_t ack_number)
 
 negotiation_t parse_OACK(char *buffer, ssize_t size, bool blksize, bool timeout, bool tsize)
 {
+    // nastaveni defaultnich hodnot
     negotiation_t negotiation { .block_size = -1, .transfer_size = -1, .timeout = 0 };
     ssize_t done = 2;
     string option;
@@ -66,16 +73,20 @@ negotiation_t parse_OACK(char *buffer, ssize_t size, bool blksize, bool timeout,
 
     while (done < size)
     {
+        // ziskani jmena podminky prenosu
         option = string(&buffer[done]);
         done += option.size() + 1;
+        // prevod na lowercase
         for_each(option.begin(), option.end(), [](char & c) 
         {
             c = tolower(c);
         });
         
+        //ziskani hodnoty podminky prenosu
         value = string(&buffer[done]);
         done += value.size() + 1;
 
+        // parsovani hodnoty na zaklade typu podminky
         if (option == BLKSIZE && blksize)
         {
             negotiation.block_size = stoi(value);
@@ -95,6 +106,7 @@ negotiation_t parse_OACK(char *buffer, ssize_t size, bool blksize, bool timeout,
         }
         else
         {
+            // neznama podminka, client nespecifikoval
             throw exception();
         } 
     }
@@ -143,9 +155,11 @@ void ERR_packet(char *buffer, ssize_t &size, err_code_t code, const char* messag
     uint16_t *opcode = (uint16_t *)buffer;
     uint16_t *err_code = (uint16_t *)&buffer[2];
 
+    // nastaveni opcode a error code
     *opcode = ERR;
     *err_code = code;
+    // vlozeni chybove zpravy
     strcpy(&buffer[TFTP_HDR], message);
-
+    
     size = TFTP_HDR + strlen(message) + 1;
 }
