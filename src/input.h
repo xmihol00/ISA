@@ -20,6 +20,8 @@ using namespace std::chrono::_V2;
 #define DEFAULT_TIMEOUT 1U
 #define LF 10
 #define CR 13
+#define MAX_URL_LEN 512
+#define MIN_BLK_SIZE 5
 
 enum transfer_mode_t
 {
@@ -45,7 +47,7 @@ typedef struct
     transfer_mode_t     transfer_mode;  // typ prenostu
     string              file_URL;       // cesta a jmeno prenaseneho souboru
     uint8_t             timeout;        // znoleny timeout, defaultne 0
-    int                 block_size;     // zvolena velikost bloku, defaultne 0
+    int                 block_size;     // zvolena velikost bloku, defaultne 512 B
     data_mode_t         data_mode;      // ty zakodovani dat pro prenos
     address_type_t      address_type;   // typ IP adresy
     union

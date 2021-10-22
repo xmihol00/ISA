@@ -11,4 +11,5 @@ TODO - UPD a TCP zmínka.
 
 V následujícím diagramu je vyjádřena komunikace mezi serverem a klientem.
 
-#sudo service tftpd-hpa status
+sudo service tftpd-hpa status
+sudo service tftpd-hpa stop

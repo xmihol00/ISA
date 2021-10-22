@@ -5,10 +5,10 @@ void transfer(const arguments_t &arguments)
 {
     // ziskani casu zacatku prenosu
     system_clock::time_point start = high_resolution_clock::now();
-    struct sockaddr *destination;
-    socklen_t destination_len;
-    int socket_fd;
-    int32_t mtu;
+    struct sockaddr *destination = nullptr;
+    socklen_t destination_len = 0;
+    int socket_fd = 0;
+    int32_t mtu = arguments.block_size;
 
     // otevreni socketu na zaklade typu adresy
     if (arguments.address_type == IPv4)
@@ -37,37 +37,39 @@ void transfer(const arguments_t &arguments)
         return;
     }
 
-    // ziskani minialniho MTU pro prenos dat v systemu
-    if ((mtu = get_min_MTU(destination->sa_family)) == INT32_MAX) 
+    if (arguments.block_size != TFTP_DATA_SIZE)
     {
-        cerr << "Warning: MTU could not be obtained, default block size of 512 is used instead." << endl;
-        mtu = TFTP_DATA_SIZE;
-    }
-    else
-    {
-        // snizeni MTU o velikosti hlavicek nizzsich vrstev
-        if (destination->sa_family == AF_INET) // IPv4
+        // ziskani minialniho MTU pro prenos dat v systemu
+        if ((mtu = get_min_MTU(destination->sa_family)) == INT32_MAX) 
         {
-            mtu -= MAX_IPv4_HDR + UDP_HDR + TFTP_HDR;
-            if (mtu >= arguments.block_size)
-            {
-                mtu = arguments.block_size > 0 ? arguments.block_size : mtu;
-            }
-            else
-            {
-                cerr << "Warning: Specified block size exceeds minimum MTU of size " << mtu << ", which is used instead." << endl;
-            }
+            cerr << "Warning: MTU could not be obtained, default block size of 512 is used instead." << endl;
         }
-        else // IPv6
+        else
         {
-            mtu -= IPv6_HDR + UDP_HDR + TFTP_HDR;
-            if (mtu >= arguments.block_size)
+            // snizeni MTU o velikosti hlavicek nizzsich vrstev
+            if (destination->sa_family == AF_INET) // IPv4
             {
-                mtu = arguments.block_size > 0 ? arguments.block_size : mtu;
+                mtu -= MAX_IPv4_HDR + UDP_HDR + TFTP_HDR;
+                if (mtu >= arguments.block_size)
+                {
+                    mtu = arguments.block_size > 0 ? arguments.block_size : mtu;
+                }
+                else
+                {
+                    cerr << "Warning: Specified block size exceeds minimum MTU of size " << mtu << ", which is used instead." << endl;
+                }
             }
-            else
+            else // IPv6
             {
-                cerr << "Warning: Specified block size exceeds minimum MTU of size " << mtu << ", which is used instead." << endl;
+                mtu -= IPv6_HDR + UDP_HDR + TFTP_HDR;
+                if (mtu >= arguments.block_size)
+                {
+                    mtu = arguments.block_size > 0 ? arguments.block_size : mtu;
+                }
+                else
+                {
+                    cerr << "Warning: Specified block size exceeds minimum MTU of size " << mtu << ", which is used instead." << endl;
+                }
             }
         }
     }
@@ -137,13 +139,16 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
         if (retries++ > MAX_RETRIES)
         {
             cerr << "Error: Transfer of data failed. Server timed out." << endl;
+            size = data.block_size;
             goto cleanup;
         }
 
-        RQ_header(buffer, size, options);
-        if (sendto(socket_fd, buffer, size, 0, address, addr_length) != size)
+        RQ_header(ack_buff, size, options);
+        if (sendto(socket_fd, ack_buff, size, 0, address, addr_length) != size)
         {
             cerr << "Error: Transfer of data failed. Data could not be send fully." << endl;
+            ERR_packet(buffer, size, NOT_DEFINED, "Data could not be send fully.");
+            sendto(socket_fd, buffer, size, 0, address, addr_length);
             goto cleanup;
         }
     // snaha o navazani komuniakce se serverem    
@@ -163,6 +168,8 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
         // ziskani podminek prenosu odsouhlasenych serverem
         if (set_negotioation(socket_fd, address, addr_length, buffer, size, data))
         {
+            size = data.block_size;
+            summary.datagram_count = 0;
             goto cleanup;
         }
 
@@ -182,6 +189,7 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
                 if (retries++ > MAX_RETRIES)
                 {
                     cerr << "Error: Transfer of data failed. Server timed out." << endl;
+                    size = data.block_size;
                     goto cleanup;
                 }
 
@@ -190,6 +198,8 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
                 if (sendto(socket_fd, buffer, size, 0, address, addr_length) != size)
                 {
                     cerr << "Error: Transfer of data failed. Data could not be send fully." << endl;
+                    ERR_packet(buffer, size, NOT_DEFINED, "Data could not be send fully.");
+                    sendto(socket_fd, buffer, size, 0, address, addr_length);
                     goto cleanup;
                 }
             
@@ -200,7 +210,7 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
 
             if (recieved_address.sin6_port != TID) // spatne TID
             {
-                cerr << "Warning: Recieved TID does not match the estabhlished one, transfer continues." << endl;
+                cerr << "Warning: Recieved TID does not match the estabhlished one, server informed and transfer continues." << endl;
                 ERR_packet(ack_buff, size, UNKNOWN_ID, "Incorrect TID.");
                 sendto(socket_fd, ack_buff, size, 0, address, addr_length);
                 retries--;
@@ -223,12 +233,15 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
     }
     else if (*opcode == ERR)
     {
+        buffer[size] = 0;
         cerr << "Error: " << err_code_value(*block_number) << " Message: " << &buffer[TFTP_HDR] << endl;
         goto cleanup;
     }
     else
     {
         cerr << "Error: Transfer of data failed. Unexpected packet recieved." << endl;
+        ERR_packet(buffer, size, NOT_DEFINED, "Unexpected packet recieved.");
+        sendto(socket_fd, buffer, size, 0, address, addr_length);
         goto cleanup;
     }
 
@@ -261,6 +274,7 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
                 if (retries++ > MAX_RETRIES)
                 {
                     cerr << "Error: Transfer of data failed. Server timed out." << endl;
+                    size = data.block_size;
                     goto cleanup;
                 }
                 // ACK posledniho datoveho packetu 
@@ -268,6 +282,8 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
                 if (sendto(socket_fd, ack_buff, size, 0, address, addr_length) != size)
                 {
                     cerr << "Error: Transfer of data failed. Data could not be send fully." << endl;
+                    ERR_packet(buffer, size, NOT_DEFINED, "Data could not be send fully.");
+                    sendto(socket_fd, buffer, size, 0, address, addr_length);
                     goto cleanup;
                 }
             } 
@@ -276,7 +292,7 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
             
             if (recieved_address.sin6_port != TID) // spatne TID
             {
-                cerr << "Warning: Recieved TID does not match the estabhlished one, transfer continues." << endl;
+                cerr << "Warning: Recieved TID does not match the estabhlished one, server informed and transfer continues." << endl;
                 ERR_packet(ack_buff, size, UNKNOWN_ID, "Incorrect TID.");
                 sendto(socket_fd, ack_buff, size, 0, address, addr_length);
                 // prenos pokracuje
@@ -289,16 +305,19 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
             break;
         }
 
-        if (*opcode != DATA) // kontrola odrzenych dat
+        if (*opcode != DATA) // kontrola obdrzenych dat
         {
             if (*opcode == ERR)
             {
+                buffer[size] = 0;
                 cerr << "Error: " << err_code_value(*block_number) << " Message: " << &buffer[TFTP_HDR] << endl;
                 goto cleanup;
             }
-            else
+            else // data s neznamym opcode
             {
                 cerr << "Error: Transfer of data failed. Unexpected packet recieved." << endl;
+                ERR_packet(buffer, size, NOT_DEFINED, "Unexpected packet recieved.");
+                sendto(socket_fd, buffer, size, 0, address, addr_length);
                 goto cleanup;
             }
         }   
@@ -321,8 +340,6 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
             }
         }
     }
-    // predvypocet velikosti posledniho bloku obdrzenych dat
-    summary.data_size -= data.block_size - size;
     // cteni probehlo uspesne
     summary.success = true;
 
@@ -336,6 +353,8 @@ cleanup:
 data_cleanup:
     delete[] buffer;
 
+    // predvypocet velikosti posledniho bloku obdrzenych dat
+    summary.data_size -= data.block_size - size;
     // vypocet odrzenych dat a ztrat
     summary.data_size += summary.datagram_count * data.block_size;
     summary.lost_size = summary.lost_count * data.block_size;
@@ -371,7 +390,7 @@ transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t addr
     string file_name = get_file_name(data.file_URL);
     transfer_summary_t summary = { .success = false, .file = file_name, .mode = WRITE, .blksize = TFTP_DATA_SIZE, 
                                    .datagram_count = 0, .data_size = 0, .lost_count = 0, .lost_size = 0 };
-    FILE *file = fopen(file_name.c_str(), "r");
+    FILE *file = fopen(data.file_URL.c_str(), "r");
     if (file == nullptr)
     {
         cerr << "Error: Could not open file '" << file_name << "' for reading." << endl;
@@ -396,10 +415,14 @@ transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t addr
             goto cleanup;
         }
 
-        RQ_header(buffer, size, options);
-        if (sendto(socket_fd, buffer, size, 0, address, addr_length) != size)
+        RQ_header(ack_buff, size, options);
+        if (sendto(socket_fd, ack_buff, size, 0, address, addr_length) != size)
         {
-            cerr << "Error: Transfer of data failed. Data could not be send fully.";
+            cerr << "Error: Transfer of data failed. Data could not be send fully." << endl;
+            ERR_packet(buffer, size, NOT_DEFINED, "Data could not be send fully.");
+            sendto(socket_fd, buffer, size, 0, address, addr_length);
+            summary.datagram_count++;
+            summary.data_size += size;
             goto cleanup;
         }
     } 
@@ -413,6 +436,8 @@ transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t addr
     {
         if (set_negotioation(socket_fd, address, addr_length, ack_buff, size, data))
         {
+            summary.datagram_count++;
+            summary.data_size += size;
             goto cleanup;
         }
         summary.blksize = data.block_size;
@@ -424,14 +449,17 @@ transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t addr
     }
     else if (*ack_opcode == ERR) // znama chyba
     {
-        
-        cerr << "Error: " << err_code_value(*block_number) << " Message: " << &buffer[TFTP_HDR] << endl;
+        buffer[size] = 0;
+        cerr << "Error: " << err_code_value(*ack_block_number) << " Message: " << &ack_buff[TFTP_HDR] << endl;
         goto cleanup;
     }
-    else // jna chyba
+    else // jina chyba
     {
         cerr << "Error: Transfer of data failed. Unexpected packet recieved." << endl;
-        // TODO err
+        ERR_packet(buffer, size, NOT_DEFINED, "Unexpected packet recieved.");
+        sendto(socket_fd, buffer, size, 0, address, addr_length);
+        summary.datagram_count++;
+        summary.data_size += size;
         goto cleanup;
     }
 
@@ -443,7 +471,7 @@ transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t addr
         {
             size = fread(&buffer[TFTP_HDR], 1, data.block_size, file);
         }
-        else // netascii
+        else // netascii prenos
         {
             size = fread_to_netascii(file, data.block_size, &buffer[TFTP_HDR]);
         }
@@ -467,6 +495,10 @@ transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t addr
                 if (sendto(socket_fd, buffer, size + TFTP_HDR, 0, address, addr_length) != size + TFTP_HDR)
                 {
                     cerr << "Error: Transfer of data failed. Data could not be send fully." << endl;
+                    ERR_packet(buffer, size, NOT_DEFINED, "Data could not be send fully.");
+                    sendto(socket_fd, buffer, size, 0, address, addr_length);
+                    summary.datagram_count++;
+                    summary.data_size += size;
                     goto cleanup;
                 }
             }
@@ -475,7 +507,7 @@ transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t addr
             
             if (recieved_address.sin6_port != TID)
             {
-                cerr << "Warning: Recieved TID does not match the estabhlished one, transfer continues." << endl;
+                cerr << "Warning: Recieved TID does not match the estabhlished one, server informed and transfer continues." << endl;
                 ERR_packet(ack_buff, err_size, UNKNOWN_ID, "Incorrect TID.");
                 sendto(socket_fd, ack_buff, err_size, 0, address, addr_length);
                 retries--;
@@ -483,7 +515,7 @@ transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t addr
             }
 
             retries = 0;
-            // aspon jeden datagram se neztratil
+            // jeden datagram se jiste neztratil
             summary.lost_count--; 
             summary.lost_size -= size;
             break;
@@ -491,14 +523,19 @@ transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t addr
         
         if (*ack_opcode != ACK) // chyby
         {
-            if (*ack_opcode == ERR)
+            if (*ack_opcode == ERR) // znama chyba
             {
-                cerr << "Error: " << err_code_value(*block_number) << " Message: " << &buffer[TFTP_HDR] << endl;
+                buffer[size] = 0;
+                cerr << "Error: " << err_code_value(*ack_block_number) << " Message: " << &ack_buff[TFTP_HDR] << endl;
                 goto cleanup;
             }
-            else
+            else // nerozpoznatelny nebo spatny opcode
             {
                 cerr << "Error: Transfer of data failed. Unexpected packet recieved." << endl;
+                ERR_packet(buffer, size, NOT_DEFINED, "Unexpected packet recieved.");
+                sendto(socket_fd, buffer, size, 0, address, addr_length);
+                summary.datagram_count++;
+                summary.data_size += size;
                 goto cleanup;
             }
         }
@@ -524,11 +561,11 @@ data_cleanup:
 void set_timeout(int socket_fd, uint8_t timeout)
 {
     struct timeval time_out;
-    time_out.tv_sec = timeout == 0 ? DEFAULT_TIMEOUT : timeout;
+    time_out.tv_sec = timeout == 0 ? DEFAULT_TIMEOUT : timeout; // minimalni timeout je 1
     time_out.tv_usec = 0;
     if (setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&time_out, sizeof(time_out)) == -1)
     {
-        cerr << "Warning: Timeout could not be set, program might freeze. Use Ctrl+C to terminate." << endl;
+        cerr << "Warning: Timeout could not be set, program might halt. In this case use Ctrl+C to terminate." << endl;
     }
 }
 
@@ -644,50 +681,63 @@ failed:
     return mtu;
 }
 
-bool set_negotioation(int socket_fd, struct sockaddr *address, socklen_t addr_length, char *buffer, ssize_t size, transfer_data_t &data)
+bool set_negotioation(int socket_fd, struct sockaddr *address, socklen_t addr_length, char *buffer, ssize_t &size, transfer_data_t &data)
 {
     negotiation_t negotiation;
     
     try
     {
         // parsovani odpovedi serveru
-        negotiation = parse_OACK(buffer, size, true, data.timeout != 0, data.mode == BINARY);
+        negotiation = parse_OACK(buffer, size, data.block_size != TFTP_DATA_SIZE, data.timeout != 0, data.mode == BINARY);
     }
     catch(const std::exception& e)
     {
-        cerr << "Error: Could not parse OACK datagram." << endl;
+        cerr << "Error: Could not parse Option Negotiation datagram, unknown or unspecified option recieved." << endl;
         ERR_packet(buffer, size, BAD_OACK, "Could no parse OACK datagram.");
         sendto(socket_fd, buffer, size, 0, address, addr_length);
         return true;
     }
 
-    if (negotiation.block_size == -1) // server neodpovedel na velikost bloku
+    if (data.block_size != TFTP_DATA_SIZE)
     {
-        cerr << "Warning: Server did not recognize block size option. Default size of 512 B is used instead" << endl;
-        data.block_size = TFTP_DATA_SIZE;
-    }
-    else if (negotiation.block_size <= data.block_size) // server odpovedel spravne
-    {
-        data.block_size = negotiation.block_size;
-    }
-    else // server odpovedel chybne
-    {
-        cerr << "Error: Server specified block size larger than offered." << endl;
-        ERR_packet(buffer, size, BAD_OACK, "Block size larger than specified by client.");
-        sendto(socket_fd, buffer, size, 0, address, addr_length);
-        return true;
+        if (negotiation.block_size == -1) // server neodpovedel na velikost bloku
+        {
+            cerr << "Warning: Server did not recognize block size option. Default size of 512 B is used instead" << endl;
+            data.block_size = TFTP_DATA_SIZE;
+        }
+        else if (negotiation.block_size <= data.block_size) // server odpovedel spravne
+        {
+            data.block_size = negotiation.block_size;
+            if (data.block_size < MIN_BLK_SIZE)
+            {
+                cerr << "Error: Server specified to small block size." << endl;
+                ERR_packet(buffer, size, BAD_OACK, "Block size too small.");
+                sendto(socket_fd, buffer, size, 0, address, addr_length);
+                return true;
+            }
+        }
+        else // server odpovedel chybne
+        {
+            cerr << "Error: Server specified block size larger than offered." << endl;
+            ERR_packet(buffer, size, BAD_OACK, "Block size larger than specified by client.");
+            sendto(socket_fd, buffer, size, 0, address, addr_length);
+            return true;
+        }
     }
 
-    if (data.timeout != 0 && negotiation.timeout == 0) // server neodpovedel na timeout 
+    if (data.timeout != 0)
     {
-        set_timeout(socket_fd, DEFAULT_TIMEOUT);
-        cerr << "Warning: Server did not recognize timeout option. Default timeout of 1 s is used instead." << endl;
-    }
-    else if (data.timeout != 0 && negotiation.timeout != data.timeout) // server odpovedel jinou hodnotou timeout --TODO
-    {
-        set_timeout(socket_fd, DEFAULT_TIMEOUT);
-        cerr << "Warning: Server did not accept specified timeout of " << data.timeout 
-             << " s. Default timeout of 1 s is used instead." << endl;
+        if (negotiation.timeout == 0) // server neodpovedel na timeout 
+        {
+            set_timeout(socket_fd, DEFAULT_TIMEOUT);
+            cerr << "Warning: Server did not recognize timeout option. Default timeout of 1 s is used instead." << endl;
+        }
+        else if (data.timeout != 0 && negotiation.timeout != data.timeout) // server odpovedel jinou hodnotou timeout
+        {
+            set_timeout(socket_fd, negotiation.timeout); // akceptace timeout specifikovaneho serverem
+            cerr << "Warning: Server did not accept specified timeout of " << (uint)data.timeout 
+                << " s. Timeout specified by server of " << (uint)negotiation.timeout <<" s is used instead." << endl;
+        }
     }
 
     if (data.mode == BINARY)

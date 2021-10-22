@@ -87,4 +87,4 @@ void set_timeout(int socket_fd, uint8_t timeout);
  * @param size velikost zpravy v bufferu.
  * @param data vepise ziskane podminky odsouhlasene serverem.
  */
-bool set_negotioation(int socket_fd, struct sockaddr *address, socklen_t addr_length, char *buffer, ssize_t size, transfer_data_t &data);
+bool set_negotioation(int socket_fd, struct sockaddr *address, socklen_t addr_length, char *buffer, ssize_t &size, transfer_data_t &data);

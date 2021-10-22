@@ -22,12 +22,15 @@ void RQ_header(char *buffer, ssize_t &size, TFTP_options_t options)
         size += NETASCII_LEN;
     }
 
-    // vzdy se nastavi blocksize, pokud nezadal uzivatel, tak na zaklade min MTU
-    strcpy(&buffer[size], BLKSIZE);
-    size += BLKSIZE_LEN;
-    value = to_string(options.block_size);
-    strcpy(&buffer[size], value.c_str());
-    size += value.size() + 1;
+    // blocksize, pokud ji uzivatel specifikoval
+    if (options.block_size != TFTP_DATA_SIZE)
+    {
+        strcpy(&buffer[size], BLKSIZE);
+        size += BLKSIZE_LEN;
+        value = to_string(options.block_size);
+        strcpy(&buffer[size], value.c_str());
+        size += value.size() + 1;
+    }
 
     // nastaveni tsize, pokud je prenos binarni, pri netascii to neni mozne
     if (options.transfer_size >= 0 && options.mode == BINARY)
