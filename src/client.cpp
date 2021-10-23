@@ -120,6 +120,9 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
     
     // zikani jmena souboru z URL
     string file_name = get_file_name(data.file_URL);
+    cout << "Reading file '" << file_name << "' ..." << endl;
+
+    // inicializace prehledu prenosu, bude vyplnena v prubehu prenosu
     transfer_summary_t summary = { .success = false, .file = file_name, .mode = READ, .blksize = TFTP_DATA_SIZE, 
                                    .datagram_count = 0, .data_size = 0, .lost_count = 0, .lost_size = 0 };
     FILE *file = fopen(file_name.c_str(), "w");
@@ -134,7 +137,7 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
         // preventivni nastaveni ztraty datagramu
         summary.lost_count++;
 
-        ((sockaddr_in *)address)->sin_port = recieved_address.sin6_port;
+        ((sockaddr_in *)address)->sin_port = recieved_address.sin6_port; // nastaveni defaultniho TID serveru (69 nebo specifikovano uzivatelelem)
         
         if (retries++ > MAX_RETRIES)
         {
@@ -153,7 +156,7 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
         }
     // snaha o navazani komuniakce se serverem    
     }
-    while ((size = recvfrom(socket_fd, buffer, data.block_size + TFTP_HDR, 0, ptr_recieved_address, &recv_lenght)) == -1 || // recv selhala
+    while ((size = recvfrom(socket_fd, buffer, TFTP_DATAGRAM_SIZE, 0, ptr_recieved_address, &recv_lenght)) == -1 || // recv selhala
            (*opcode == DATA && ntohs(*block_number) != 1)); // prichozi datagram je nespravny
     retries = 0;
     // ziskani TID serveru
@@ -176,8 +179,6 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
         // resetovani odrzenych dat
         summary.datagram_count = 0;
         summary.lost_count = 0;
-        summary.data_size = 0;
-        summary.lost_size = 0;
         summary.blksize = data.block_size;
 
         while(true) // dokud neprisel datagram se spravnym TID
@@ -342,6 +343,8 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
     }
     // cteni probehlo uspesne
     summary.success = true;
+    // predvypocet velikosti posledniho bloku obdrzenych dat
+    summary.data_size = size - data.block_size;
 
     // zaslani posledniho ACK
     ACK_header(buffer, size, *block_number);
@@ -353,8 +356,6 @@ cleanup:
 data_cleanup:
     delete[] buffer;
 
-    // predvypocet velikosti posledniho bloku obdrzenych dat
-    summary.data_size -= data.block_size - size;
     // vypocet odrzenych dat a ztrat
     summary.data_size += summary.datagram_count * data.block_size;
     summary.lost_size = summary.lost_count * data.block_size;
@@ -387,7 +388,11 @@ transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t addr
     struct sockaddr *ptr_recieved_address = (struct sockaddr *) &recieved_address;
     socklen_t recv_lenght = sizeof(recieved_address);
     
+    // ziskani jmena souboru z URL
     string file_name = get_file_name(data.file_URL);
+    cout << "Writing file '" << file_name << "' ..." << endl;
+
+    // inizializace prehledu zapsani souboru na server, v prubehu bude upravovana
     transfer_summary_t summary = { .success = false, .file = file_name, .mode = WRITE, .blksize = TFTP_DATA_SIZE, 
                                    .datagram_count = 0, .data_size = 0, .lost_count = 0, .lost_size = 0 };
     FILE *file = fopen(data.file_URL.c_str(), "r");
@@ -407,7 +412,7 @@ transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t addr
 
     do // kontaktovani serveru
     {
-        ((sockaddr_in *)address)->sin_port = recieved_address.sin6_port;
+        ((sockaddr_in *)address)->sin_port = recieved_address.sin6_port; // nastaveni defaultniho TID serveru (69 nebo specifikovano uzivatelelem)
         
         if (retries++ > MAX_RETRIES)
         {
@@ -466,7 +471,7 @@ transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t addr
     for (uint16_t i = 1; ; i++) 
     {
         *opcode = DATA; // opcode datagramu
-        *block_number = htons(i); // cislo bloku
+        *block_number = htons(i); // cislo bloku ve spravnem endianu
         if (data.mode == BINARY) // binarni prenos
         {
             size = fread(&buffer[TFTP_HDR], 1, data.block_size, file);
@@ -569,6 +574,7 @@ void set_timeout(int socket_fd, uint8_t timeout)
     }
 }
 
+// funkce nepouzita
 int32_t get_MTU_of_used_if(sockaddr_in6 address, socklen_t lenght)
 {
     sockaddr *destination = (sockaddr *)&address;

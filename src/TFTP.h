@@ -12,7 +12,7 @@ using namespace std;
 #include <string>
 #include <algorithm>
 
-#include "input.h"
+#include "in_out.h"
 
 #define TFTP_DATAGRAM_SIZE 516
 #define TFTP_DATA_SIZE 512

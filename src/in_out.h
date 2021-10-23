@@ -18,10 +18,10 @@ using namespace std::chrono::_V2;
 
 #define DEFAULT_PORT 69U
 #define DEFAULT_TIMEOUT 1U
-#define LF 10
 #define CR 13
+#define LF 10
 #define MAX_URL_LEN 512
-#define MIN_BLK_SIZE 5
+#define MIN_BLK_SIZE 1
 
 enum transfer_mode_t
 {

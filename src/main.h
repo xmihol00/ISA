@@ -1,7 +1,7 @@
 #pragma once
 
 #include <iostream>
-#include "input.h"
+#include "in_out.h"
 #include "client.h"
 
 using namespace std;

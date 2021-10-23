@@ -1,8 +1,10 @@
-#include "input.h"
+#include "in_out.h"
 
 void help_msg()
 {
-    cout << "Here will be a help message" << endl;
+    cout << endl;
+    cout << "Command prompt usage:" << endl;
+
 }
 
 bool parse_line(const string &line, arguments_t &arguments)
@@ -355,6 +357,7 @@ bool fwrite_from_netascii(FILE *file, ssize_t size, char *buffer)
 
 void print_summary(const transfer_summary_t &summary, system_clock::time_point start, system_clock::time_point end)
 {
+    cout << endl;
     if (summary.success) // prevod souboru uspesny
     {
         if (summary.mode == READ) // cteni
@@ -400,4 +403,5 @@ void print_summary(const transfer_summary_t &summary, system_clock::time_point s
                         << " before failure occured in " << summary.datagram_count << " datagram" 
                         << (summary.datagram_count != 1 ? "s" : "") << " of maximum size " << summary.blksize << " B." << endl;   
     }    
+    cout << endl;
 }
