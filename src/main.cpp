@@ -2,29 +2,23 @@
 
 int main()
 {
-    /*for (int i = 0; i < 256; i++)
-    {
-        putchar(i);
-    }
-    return 0;*/
-
-    /*int c;
-    while ((c = getc(stdin)) != EOF)
-        printf("%d ", c);
-    return 0;*/
-    
     arguments_t arguments;
+    int status = 0;
 
     cout << "> ";
     for (string line; getline(cin, line); )
     {
-        if (parse_line(line, arguments))
+        status = parse_line(line, arguments);
+        if (status == 1)
         {
             transfer(arguments);
+        }
+        else if (status == -1)
+        {
+            break;
         }
         cout << "> ";
     }
 
     return 0;
-
 }

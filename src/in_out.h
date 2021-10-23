@@ -82,9 +82,9 @@ void help_msg();
  * @param line radek vstupu.
  * @param arguments ziskane argumety ze vstupniho radku, pri navratove hodnote true neni definovano. 
  *                  Jinak na staveno na ziskane hodnoty nebo defaultni hodnoty.
- * @return false pri uspechu, jinak true.
+ * @return 1 argumetns accepted, 0 argumetns not accepted, -1 terminate application
  */
-bool parse_line(const string &line, arguments_t &arguments);
+int parse_line(const string &line, arguments_t &arguments);
 
 /**
  * @brief Ziska jmeno souboru z cesty.

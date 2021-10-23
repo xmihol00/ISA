@@ -1,5 +1,5 @@
 CC = g++
-CFLAGS = -std=c++17 -Wall -Wextra -MMD
+CFLAGS = -std=c++17 -Wall -Wextra -MMD -g
 BUILD_DIR = ../build/
 EXE = ../mytftpclient
 SRC = $(wildcard *.cpp)

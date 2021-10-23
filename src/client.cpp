@@ -5,6 +5,8 @@ void transfer(const arguments_t &arguments)
 {
     // ziskani casu zacatku prenosu
     system_clock::time_point start = high_resolution_clock::now();
+    struct sockaddr_in server_v4;
+    struct sockaddr_in6 server_v6;
     struct sockaddr *destination = nullptr;
     socklen_t destination_len = 0;
     int socket_fd = 0;
@@ -13,22 +15,22 @@ void transfer(const arguments_t &arguments)
     // otevreni socketu na zaklade typu adresy
     if (arguments.address_type == IPv4)
     {
-        struct sockaddr_in server_v4;
+        destination_len = sizeof(server_v4);
+        memset(&server_v4, 0, destination_len);
         server_v4.sin_addr = arguments.address.ipv4;
         server_v4.sin_family = AF_INET;
         server_v4.sin_port = arguments.port;
         destination = (struct sockaddr *)&server_v4;
-        destination_len = sizeof(server_v4);
         socket_fd = socket(AF_INET , SOCK_DGRAM , 0);
     }
     else
     {
-        struct sockaddr_in6 server_v6;
+        destination_len = sizeof(server_v6);
+        memset(&server_v6, 0, destination_len);
         server_v6.sin6_addr = arguments.address.ipv6;
         server_v6.sin6_family = AF_INET6;
         server_v6.sin6_port = arguments.port;
         destination = (struct sockaddr *)&server_v6;
-        destination_len = sizeof(server_v6);
         socket_fd = socket(AF_INET6 , SOCK_DGRAM , 0);
     }
     if (socket_fd == -1) // otevreni socketu selhalo
@@ -98,9 +100,13 @@ void transfer(const arguments_t &arguments)
 transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_length, transfer_data_t data)
 {
     uint8_t retries = 0; // pocet pokusu znovu odeslani ztraceneho datagramu
-    in_port_t TID; // TID serveru
+    in_port_t TID = 0; // TID serveru
+    // inicializace podminek prenosu
     TFTP_options_t options = { .file_URL = data.file_URL, .opcode = RRQ, .mode = data.mode, .block_size = data.block_size, 
                                .transfer_size = 0, .timeout = data.timeout, .multicast = data.multicast };
+    // inicializace prehledu prenosu, bude vyplnena v prubehu prenosu
+    transfer_summary_t summary = { .success = false, .file = get_file_name(data.file_URL), .mode = READ, .blksize = TFTP_DATA_SIZE, 
+                                   .datagram_count = 0, .data_size = 0, .lost_count = 0, .lost_size = 0 };
     
 
     // buffer pro prijem dat
@@ -112,32 +118,27 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
     // buffer pro zasilani ACK
     char ack_buff[ACK_BUFFER_SIZE] = {0, };
 
-    ssize_t size;
+    ssize_t size = 0;
     struct sockaddr_in6 recieved_address;
-    recieved_address.sin6_port = ((sockaddr_in *)address)->sin_port;
+    memcpy(&recieved_address, address, addr_length);
     struct sockaddr *ptr_recieved_address = (struct sockaddr *) &recieved_address;
     socklen_t recv_lenght = sizeof(recieved_address);
     
-    // zikani jmena souboru z URL
-    string file_name = get_file_name(data.file_URL);
-    cout << "Reading file '" << file_name << "' ..." << endl;
-
-    // inicializace prehledu prenosu, bude vyplnena v prubehu prenosu
-    transfer_summary_t summary = { .success = false, .file = file_name, .mode = READ, .blksize = TFTP_DATA_SIZE, 
-                                   .datagram_count = 0, .data_size = 0, .lost_count = 0, .lost_size = 0 };
-    FILE *file = fopen(file_name.c_str(), "w");
+    FILE *file = fopen(summary.file.c_str(), "w");
     if (file == nullptr)
     {
-        cerr << "Error: Could not open file '" << file_name << "' for writing." << endl;
+        cerr << "Error: Could not open file '" << summary.file << "' for writing." << endl;
         goto data_cleanup;
     }
+    cout << "Reading file '" << summary.file << "' ..." << endl;
 
     do
     {
         // preventivni nastaveni ztraty datagramu
         summary.lost_count++;
 
-        ((sockaddr_in *)address)->sin_port = recieved_address.sin6_port; // nastaveni defaultniho TID serveru (69 nebo specifikovano uzivatelelem)
+        // nastaveni defaultniho TID serveru (69 nebo specifikovano uzivatelelem)
+        ((sockaddr_in *)address)->sin_port = recieved_address.sin6_port; 
         
         if (retries++ > MAX_RETRIES)
         {
@@ -367,8 +368,12 @@ transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t addr
 {
     uint8_t retries = 0;  // pocet pokusu o znovuodeslani ztraceneho datagramu
     in_port_t TID = 0;    // TID serveru
+    // inicializace podminek prenosu
     TFTP_options_t options = { .file_URL = data.file_URL, .opcode = WRQ, .mode = data.mode, .block_size = data.block_size, 
                                .transfer_size = 0, .timeout = data.timeout, .multicast = data.multicast };
+    // inizializace prehledu zapsani souboru na server, v prubehu bude upravovana
+    transfer_summary_t summary = { .success = false, .file = get_file_name(data.file_URL), .mode = WRITE, .blksize = TFTP_DATA_SIZE, 
+                                   .datagram_count = 0, .data_size = 0, .lost_count = 0, .lost_size = 0 };
     
     // buffer pro odesilana data
     char *buffer = new char[(data.block_size > TFTP_DATA_SIZE ? data.block_size + TFTP_HDR : TFTP_DATAGRAM_SIZE) + PADDING]();
@@ -384,21 +389,14 @@ transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t addr
     ssize_t size = 0;
     ssize_t err_size = ACK_BUFFER_SIZE;
     struct sockaddr_in6 recieved_address;
-    recieved_address.sin6_port = ((sockaddr_in *)address)->sin_port;
+    memcpy(&recieved_address, address, addr_length);
     struct sockaddr *ptr_recieved_address = (struct sockaddr *) &recieved_address;
     socklen_t recv_lenght = sizeof(recieved_address);
-    
-    // ziskani jmena souboru z URL
-    string file_name = get_file_name(data.file_URL);
-    cout << "Writing file '" << file_name << "' ..." << endl;
 
-    // inizializace prehledu zapsani souboru na server, v prubehu bude upravovana
-    transfer_summary_t summary = { .success = false, .file = file_name, .mode = WRITE, .blksize = TFTP_DATA_SIZE, 
-                                   .datagram_count = 0, .data_size = 0, .lost_count = 0, .lost_size = 0 };
     FILE *file = fopen(data.file_URL.c_str(), "r");
     if (file == nullptr)
     {
-        cerr << "Error: Could not open file '" << file_name << "' for reading." << endl;
+        cerr << "Error: Could not open file '" << summary.file << "' for reading." << endl;
         goto data_cleanup;
     }
 
@@ -406,13 +404,15 @@ transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t addr
     if (fseek(file, 0, SEEK_END) == -1 || (options.transfer_size = ftell(file)) == -1 || fseek(file, 0, SEEK_SET) == -1)
     {
         rewind(file);
-        cerr << "Warning: Could not obtain size of file '" << file_name << "', 'tsize' option will not be used." << endl;
+        cerr << "Warning: Could not obtain size of file '" << summary.file << "', 'tsize' option will not be used." << endl;
         options.transfer_size = -1;
     }
+    cout << "Writing file '" << summary.file << "' ..." << endl;
 
     do // kontaktovani serveru
     {
-        ((sockaddr_in *)address)->sin_port = recieved_address.sin6_port; // nastaveni defaultniho TID serveru (69 nebo specifikovano uzivatelelem)
+        // nastaveni defaultniho TID serveru (69 nebo specifikovano uzivatelelem)
+        ((sockaddr_in *)address)->sin_port = recieved_address.sin6_port;
         
         if (retries++ > MAX_RETRIES)
         {
@@ -423,6 +423,7 @@ transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t addr
         RQ_header(ack_buff, size, options);
         if (sendto(socket_fd, ack_buff, size, 0, address, addr_length) != size)
         {
+            cerr << strerror(errno) << endl;
             cerr << "Error: Transfer of data failed. Data could not be send fully." << endl;
             ERR_packet(buffer, size, NOT_DEFINED, "Data could not be send fully.");
             sendto(socket_fd, buffer, size, 0, address, addr_length);

@@ -1,0 +1,17 @@
+$ mytftpclient
+>-R/W -d adresar/soubor -t timeout -s velikost -a adresa,port -c mód -m
+parametr -R nebo parametr -W (povinný)
+Pokud bude zadán parametr -R, bude se jednat o čtení souboru ze serveru. Pokud bude zadán parametr -W, bude se jednat o zápis souboru na server. Přítomnost obou parametrů v rámci jednoho příkazu je vyloučena.
+parametr -d (povinný)
+soubor určuje soubor, který bude klient z/na server přijímat/odesílat. adresar specifikuje absolutní cestu kam/odkud se má soubor přenést.
+parametr -t (nepovinný)
+timeout v sekundách určuje, jaká je hodnota timeout, kterou bude klient poptávat od serveru. Klient navrhuje, server může či nemusí akceptovat. Samotný timeout vyjadřuje dobu čekání serveru před retransmisí nepotvrzených dat. Pokud není parametr přítomen, tak se option nepoužije.
+parametr -s (nepovinný)
+velikost specifikuje maximální velikost bloku v násobcích oktetů, které bude klient navrhovat pro přenos. Jako horní hranici, kterou klient odesílá, uvažujte nejmenší z MTU ze všech rozhraních, na které by klient mohl TFTP zprávu serveru odeslat (pozor, tedy potenicálně více než 512 B, co je v RFC).
+parametr -m (nepovinný)
+klient si od serveru vyžádá skrz multicast option transfer dat pomocí multicastu.
+parametr -c (nepovinný)
+mód, který může nabýt jen hodnot "ascii" (nebo "netascii") a "binary" (nebo "octet"), čímž klient specifikuje mód přenosu dat. Implicitně (bez přítomnosti argumentu) se uvažuje binární transfer.
+parametr -a (nepovinný)
+adresa je adresa serveru ve formátu IPv4 či IPv6 rozhraní, na němž má služba běžet (pokud není žádná uvedena, tak se implicitně uvažuje IPv4 localhost, tedy 127.0.0.1).
+port je číslo portu, na kterém server naslouchá (pokud není uveden, je to implicitně 69). Pokud neuvedete parametr -a, uvažujte IPv4 127.0.0.1 a port 69. Pokud uvedete parametr -a, tak se držte poptávané syntaxe adresa,port.

@@ -23,4 +23,6 @@ while True:
     sock.sendto(str.encode("\0\4\0\1"), addr)
     sleep(1.1)
     sock.sendto(str.encode("\0\4\0\2"), addr)
+    sleep(1.1)
+    sock.sendto(str.encode("\0\4\0\3"), addr)
 

@@ -2,25 +2,35 @@
 
 void help_msg()
 {
-    cout << endl;
     cout << "Command prompt usage:" << endl;
-
+    cout << "   -R                               : Compulsory, cannot be combined with '-W' option. Specifies reading a file from server." << endl;
+    cout << "   -W                               : Compulsory, cannot be combined with '-R' option. Specifies writing a file to server." << endl;
+    cout << "   -d <filepath/filename>           : Compulsory. Specifies the path to a read or written file and its name." << endl;
+    cout << "   -t <0-255 inclusive>             : Optional. Specifies the used timeout in seconds before potentionaly lost datagram" << endl;
+    cout << "                                      is resend. The default value is 1 s." << endl;
+    cout << "   -s <1-2147483647 inclusive>      : Optional. Specifies the used block size of transported data in one datagram." << endl; 
+    cout << "                                      Larger values may be replaced with the MTU of the system." << endl;
+    cout << "   -m                               : Optional. Specifies the use of multicast for reading a file from server." << endl;
+    cout << "                                      When '-W' option is specified, the value is ignored." << endl;
+    cout << "   -c <netascii|ascii|binary|octet> : Optional. Specifies the used encoding of transfered data. Default value is 'binary'." << endl;
+    cout << "   -a <IP address,port>             : Optional. Specifies the IPv4 or IPv6 adress and port, on which the server is listening." << endl;
+    cout << "                                      Default values are '127.0.0.1,69'." << endl;
 }
 
-bool parse_line(const string &line, arguments_t &arguments)
+int parse_line(const string &line, arguments_t &arguments)
 {
     if (line == "q" || line == "exit") // vypnuti apliakce
     {
-        exit(0);
+        return -1;
     }
     else if (line == "?" || line == "h") // napoveda
     {
         help_msg();
-        return false;
+        return 0;
     }
     else if (line == "") // pouze enter
     {
-        return false;
+        return 0;
     }
 
     bool mode = false;
@@ -44,7 +54,7 @@ bool parse_line(const string &line, arguments_t &arguments)
             if (mode)
             {
                 cerr << "Error: Mode of file transfer specified more than once. Type '?' or 'h' for help." << endl;
-                return false;
+                return 0;
             }
             mode = true;
             arguments.transfer_mode = READ;
@@ -54,7 +64,7 @@ bool parse_line(const string &line, arguments_t &arguments)
             if (mode)
             {
                 cerr << "Error: Mode of file transfer specified more than once. Type '?' or 'h' for help." << endl;
-                return false;
+                return 0;
             }
             mode = true;
             arguments.transfer_mode = WRITE;
@@ -64,12 +74,12 @@ bool parse_line(const string &line, arguments_t &arguments)
             if (!(stream >> arguments.file_URL)) // ziskani hodnoty
             {
                 cerr << "Error: -d option requires a parameter. Type '?' or 'h' for help." << endl;
-                return false;
+                return 0;
             }
             if (arguments.file_URL.size() > MAX_URL_LEN) // buffer overflow may occure (buffer size is 1024 B)
             {
                 cerr << "Error: lenght of the file URL cannot be larger than 512 characters. Type '?' or 'h' for help." << endl;
-                return false;
+                return 0;
             }
         }
         else if (word == "-t") // timeout
@@ -77,19 +87,19 @@ bool parse_line(const string &line, arguments_t &arguments)
             if (!(stream >> word)) // ziskani hodnoty
             {
                 cerr << "Error: -t option requires a parameter. Type '?' or 'h' for help." << endl;
-                return false;
+                return 0;
             }
             // prevod na cislo a kontrola rozsahu
             converter = strtol(word.c_str(), &endptr, 10);
             if (converter < 0L || converter > 255L)
             {
                 cerr << "Error: Timeout out of range. Type '?' or 'h' for help." << endl;
-                return false;
+                return 0;
             }
             else if (endptr != nullptr && *endptr != '\0')
             {
                 cerr << "Error: -t option must be followed by an integer between 1 and 255 inclusive. Type '?' or 'h' for help." << endl;
-                return false;
+                return 0;
             }
             arguments.timeout = (uint8_t)converter;
         }
@@ -98,19 +108,19 @@ bool parse_line(const string &line, arguments_t &arguments)
             if (!(stream >> word))
             {
                 cerr << "Error: -s option requires a parameter. Type '?' or 'h' for help." << endl;
-                return false;
+                return 0;
             }
             // prevod na cislo a kontrola rozsahu
             converter = strtol(word.c_str(), &endptr, 10);
             if (converter < MIN_BLK_SIZE || converter > INT32_MAX)
             {
                 cerr << "Error: Block size out of range. Type '?' or 'h' for help." << endl;
-                return false;
+                return 0;
             }
             else if (endptr != nullptr && *endptr != '\0')
             {
                 cerr << "Error: -s option must be followed by a positive integer. Type '?' or 'h' for help." << endl;
-                return false;
+                return 0;
             }
             arguments.block_size = (int)converter;
         }
@@ -119,7 +129,7 @@ bool parse_line(const string &line, arguments_t &arguments)
             if (!(stream >> word)) // ziskani adresy
             {
                 cerr << "Error: -a option requires a parameter. Type '?' or 'h' for help." << endl;
-                return false;
+                return 0;
             }
             size_t pos = word.find(',');
             string address;
@@ -132,7 +142,7 @@ bool parse_line(const string &line, arguments_t &arguments)
                     if (!(stream >> word))
                     {
                         cerr << "Error: Address must contain a port number. Type '?' or 'h' for help." << endl;
-                        return false;
+                        return 0;
                     }
                 }
                 else // mezi carkou a portem neni mezera
@@ -146,7 +156,7 @@ bool parse_line(const string &line, arguments_t &arguments)
                 if (!(stream >> word)) // adresa neobsahuje carku na port
                 {
                     cerr << "Error: Address must contain a port number. Type '?' or 'h' for help." << endl;
-                    return false;
+                    return 0;
                 }
 
                 if (word == ",") // carka je samostatne
@@ -154,7 +164,7 @@ bool parse_line(const string &line, arguments_t &arguments)
                     if (!(stream >> word)) // chyby port
                     {
                         cerr << "Error: Address must contain a port number. Type '?' or 'h' for help." << endl;
-                        return false;
+                        return 0;
                     }   
                 }
                 else // mezi carkou a portem neni mezera
@@ -163,7 +173,7 @@ bool parse_line(const string &line, arguments_t &arguments)
                     if (pos == string::npos) // slovo neobsahuje carku
                     {
                         cerr << "Error: Address must contain a port number. Type '?' or 'h' for help." << endl;
-                        return false;
+                        return 0;
                     }
 
                     word = word.substr(pos + 1); // ziskani portu
@@ -176,7 +186,7 @@ bool parse_line(const string &line, arguments_t &arguments)
                 if (!inet_pton(AF_INET6, address.c_str(), &arguments.address.ipv6))
                 {
                     cerr << "Error: Invalid IP address. Type '?' or 'h' for help." << endl;
-                    return false;
+                    return 0;
                 }
                 arguments.address_type = IPv6;
             }
@@ -190,12 +200,12 @@ bool parse_line(const string &line, arguments_t &arguments)
             if (converter < 0L || converter > UINT16_MAX)
             {
                 cerr << "Error: Port number out of range. Type '?' or 'h' for help." << endl;
-                return false;
+                return 0;
             }
             else if (endptr != nullptr && *endptr != '\0')
             {
                 cerr << "Error: Port number must be a positive integer. Type '?' or 'h' for help." << endl;
-                return false;
+                return 0;
             }
             // prevod portu na spravny endian
             arguments.port = (in_port_t)htons(converter); 
@@ -205,7 +215,7 @@ bool parse_line(const string &line, arguments_t &arguments)
             if (!(stream >> word))
             {
                 cerr << "Error: -c option requires a parameter. Type '?' or 'h' for help." << endl;
-                return false;
+                return 0;
             }
 
             if (word == "ascii" || word == "netascii")
@@ -219,7 +229,7 @@ bool parse_line(const string &line, arguments_t &arguments)
             else
             {
                 cerr << "Error: Unknown mode of data transfer. Type '?' or 'h' for help." << endl;    
-                return false;
+                return 0;
             }
         }
         else if (word == "-m") // mutlicast
@@ -229,20 +239,20 @@ bool parse_line(const string &line, arguments_t &arguments)
         else // chyba
         {
             cerr << "Error: Unknown or incorrect option specified. Type '?' or 'h' for help." << endl;
-            return false;
+            return 0;
         }
     }
 
     if (!mode) // chyby READ nebo WRITE - typ prenosu
     {
         cerr << "Error: Mode of file transfer not specified. Type '?' or 'h' for help." << endl;
-        return false;
+        return 0;
     }
 
     if (arguments.file_URL.empty()) // chyby jmeno souboru
     {
         cerr << "Error: Transported file not specified. Type '?' or 'h' for help." << endl;
-        return false;
+        return 0;
     }
 
     if (arguments.address_type == UNSET) // nastaveni defaultno adresy, pokud zadna nebyla zadana
@@ -251,7 +261,7 @@ bool parse_line(const string &line, arguments_t &arguments)
         inet_pton(AF_INET, "127.0.0.1", &arguments.address.ipv4);
     }
 
-    return true;
+    return 1;
 }
 
 string get_file_name(const string &file_URL)
@@ -367,7 +377,7 @@ void print_summary(const transfer_summary_t &summary, system_clock::time_point s
             cout << "Transfer summary:" << endl;
             cout << "   - " << (end - start) / milliseconds(1) << " ms elapsed during the transfer," << endl;
             cout << "   - " << summary.data_size << " B of data were recieved" << " in " 
-                            << summary.datagram_count << " datagram" << (summary.datagram_count > 1 ? "s" : "") << " of maximum size " 
+                            << summary.datagram_count << " datagram" << (summary.datagram_count > 1 ? "s" : "") << " of a maximum data size " 
                             << summary.blksize << " B" << (summary.lost_count > 0 ? "," : ".") << endl;
             
             if (summary.lost_count > 0) // ztrata datagramu
@@ -383,7 +393,7 @@ void print_summary(const transfer_summary_t &summary, system_clock::time_point s
             cout << "Transfer summary:" << endl;
             cout << "   - " << (end - start) / milliseconds(1) << " ms elapsed during the transfer," << endl;
             cout << "   - " << summary.data_size << " B of data were sent" << " in " 
-                            << summary.datagram_count << " datagram" << (summary.datagram_count > 1 ? "s" : "") << " of maximum size " 
+                            << summary.datagram_count << " datagram" << (summary.datagram_count > 1 ? "s" : "") << " of a maximum data size " 
                             << summary.blksize << " B" << (summary.lost_count > 0 ? "," : ".") << endl;
             
             if (summary.lost_count > 0) // ztrata datagramu
@@ -395,13 +405,13 @@ void print_summary(const transfer_summary_t &summary, system_clock::time_point s
     }
     else // prevod souboru neuspesny
     {
-        cout << (summary.mode == READ ? "Reading file '" : "Writing file '") << summary.file << "' faild." << endl;
+        cout << (summary.mode == READ ? "Reading file '" : "Writing file '") << summary.file << "' failed." << endl;
 
         cout << "Transfer summary:" << endl;
         cout << "   - " << (end - start) / milliseconds(1) << " ms elapsed before failure," << endl;
         cout << "   - " << summary.data_size << " B including potential errror message " << (summary.mode == READ ? "recieved" : "sent") 
                         << " before failure occured in " << summary.datagram_count << " datagram" 
-                        << (summary.datagram_count != 1 ? "s" : "") << " of maximum size " << summary.blksize << " B." << endl;   
+                        << (summary.datagram_count != 1 ? "s" : "") << " of a maximum data size " << summary.blksize << " B." << endl;   
     }    
     cout << endl;
 }
