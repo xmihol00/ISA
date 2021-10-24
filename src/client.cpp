@@ -344,12 +344,10 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
     }
     // cteni probehlo uspesne
     summary.success = true;
-    // predvypocet velikosti posledniho bloku obdrzenych dat
-    summary.data_size = size - data.block_size;
 
     // zaslani posledniho ACK
-    ACK_header(buffer, size, *block_number);
-    sendto(socket_fd, buffer, size, 0, address, addr_length);
+    ACK_header(buffer, summary.data_size, *block_number);
+    sendto(socket_fd, buffer, summary.data_size, 0, address, addr_length);
 
 // uvolneni zdroju
 cleanup:
@@ -358,7 +356,7 @@ data_cleanup:
     delete[] buffer;
 
     // vypocet odrzenych dat a ztrat
-    summary.data_size += summary.datagram_count * data.block_size;
+    summary.data_size = size + summary.datagram_count * data.block_size - data.block_size;
     summary.lost_size = summary.lost_count * data.block_size;
 
     return summary;
@@ -736,8 +734,7 @@ bool set_negotioation(int socket_fd, struct sockaddr *address, socklen_t addr_le
     {
         if (negotiation.timeout == 0) // server neodpovedel na timeout 
         {
-            set_timeout(socket_fd, DEFAULT_TIMEOUT);
-            cerr << "Warning: Server did not recognize timeout option. Default timeout of 1 s is used instead." << endl;
+            cerr << "Warning: Server did not recognize timeout option. Client timeout remains at " << (uint)data.timeout << " s." << endl;
         }
         else if (data.timeout != 0 && negotiation.timeout != data.timeout) // server odpovedel jinou hodnotou timeout
         {
