@@ -1,3 +1,12 @@
+//====================================================================================================================
+// Soubor:      client.cpp
+// Projekt:     VUT, FIT, ISA, TFTPv2 klient
+// Datum:       24. 10. 2021
+// Autor:       David Mihola
+// Kontakt:     xmihol00@stud.fit.vutbr.cz
+// Kompilovano: gcc version 9.3.0 (Ubuntu 9.3.0-17ubuntu1~20.04)
+// Popis:       Soubor implementujici funkce pro cteni a zapis souboru na/ze serveru.
+//====================================================================================================================
 
 #include "client.h"
 
@@ -355,7 +364,7 @@ cleanup:
 data_cleanup:
     delete[] buffer;
 
-    // vypocet odrzenych dat a ztrat
+    // vypocet obdrzenych dat a ztrat
     summary.data_size = size + summary.datagram_count * data.block_size - data.block_size;
     summary.lost_size = summary.lost_count * data.block_size;
 
@@ -405,8 +414,9 @@ transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t addr
         cerr << "Warning: Could not obtain size of file '" << summary.file << "', 'tsize' option will not be used." << endl;
         options.transfer_size = -1;
     }
-    cout << "Writing file '" << summary.file << "' ..." << endl;
 
+    // zacatek zapisu dat na server
+    cout << "Writing file '" << summary.file << "' ..." << endl;
     do // kontaktovani serveru
     {
         // nastaveni defaultniho TID serveru (69 nebo specifikovano uzivatelelem)

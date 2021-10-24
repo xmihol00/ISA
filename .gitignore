@@ -1,5 +1,7 @@
 
+xmihol00.tar
 build/
-tftp_client
+mytftpclient
 *.o
 *.d
+notes.txt

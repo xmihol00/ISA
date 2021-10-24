@@ -1,3 +1,13 @@
+//====================================================================================================================
+// Soubor:      in_out.cpp
+// Projekt:     VUT, FIT, ISA, TFTPv2 klient
+// Datum:       24. 10. 2021
+// Autor:       David Mihola
+// Kontakt:     xmihol00@stud.fit.vutbr.cz
+// Kompilovano: gcc version 9.3.0 (Ubuntu 9.3.0-17ubuntu1~20.04)
+// Popis:       Soubor defunujici funkce pouzite pro ziskavani dat od uzivatele a vypis vysledku prenosu souboru.
+//====================================================================================================================
+
 #include "in_out.h"
 
 void help_msg()
@@ -13,8 +23,10 @@ void help_msg()
     cout << "   -m                               : Optional. Specifies the use of multicast for reading a file from server." << endl;
     cout << "                                      When '-W' option is specified, the value is ignored." << endl;
     cout << "   -c <netascii|ascii|binary|octet> : Optional. Specifies the used encoding of transfered data. Default value is 'binary'." << endl;
-    cout << "   -a <IP address,port>             : Optional. Specifies the IPv4 or IPv6 adress and port, on which the server is listening." << endl;
+    cout << "   -a <IP address,port>             : Optional. Specifies the IPv4 or IPv6 address and port, on which the server is listening." << endl;
     cout << "                                      Default values are '127.0.0.1,69'." << endl;
+    cout << "   q                                : Safely termiantes the application." << endl;
+    cout << "   exit                             : Safely termiantes the application." << endl;
 }
 
 int parse_line(const string &line, arguments_t &arguments)

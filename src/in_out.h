@@ -1,3 +1,14 @@
+//====================================================================================================================
+// Soubor:      in_out.h
+// Projekt:     VUT, FIT, ISA, TFTPv2 klient
+// Datum:       24. 10. 2021
+// Autor:       David Mihola
+// Kontakt:     xmihol00@stud.fit.vutbr.cz
+// Kompilovano: gcc version 9.3.0 (Ubuntu 9.3.0-17ubuntu1~20.04)
+// Popis:       Soubor deklarujici funkce, struktury a jine hodnoty pouzite pro ziskavani dat od uzivatele 
+//              a vypis vysledku prenosu souboru.
+//====================================================================================================================
+
 #pragma once
 
 #include <chrono>

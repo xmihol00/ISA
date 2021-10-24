@@ -1,0 +1,61 @@
+//====================================================================================================================
+// Soubor:      README
+// Projekt:     VUT, FIT, ISA, TFTPv2 klient
+// Datum:       24. 10. 2021
+// Autor:       David Mihola
+// Kontakt:     xmihol00@stud.fit.vutbr.cz
+// Popis:       README soubor se strukturou projektu, navodem pouziti a detaily implementace.
+//====================================================================================================================
+
+Adresářová struktura projektu:
+--|
+  |-- build/        - složka vygenerována po spustění příkazu make obsahující *.o a *.d soubory
+  |
+  |-- src/          - složka obsahující *.cpp a *.h s implmentací TFTPv2 klienta a Makefie
+  |
+  |-- tests/        - složka obsahuje soubory a skripty použité pro testování
+  |
+  |-- Makefile      - slouží ke spuštění Makefile ve složce src
+  |
+  |-- manual.pdf    - soubor obsahující dokumetaci 
+  |
+  |-- mytftpclient  - výsledný program vygenerován spuštěním příkazu make
+  |
+  |-- README
+
+Použití příkazové řádky:
+  -R                               : Povinný, nelze kombinovat s parametrem '-W'. Specifikuje čtení souboru ze serveru.
+  -W                               : Povinný, nelze kombinovat s parametrem '-R'. Specifikuje zápis souboru na serveru.
+  -d <cesta/jmeno>                 : Povinný. Specifikuje cestu k souboru a jeho jméno.
+  -t <0-255 včetně>                : Nepovinný. Specifikuje použité časové prodlení před znovu odesláním potenciálně ztraceného paketu.
+  -s <1-2147483647 včetně>         : Nepovinný. Specifikuje použitou velikost bloku dat posílaných v jednom datagramu. Větší hodnoty 
+                                     mohou být přepsány MTU systému.
+  -m                               : Nepovinný. Specifikuje použití multicast pro čtení souboru ze serveru. Pokud je specifikován 
+                                     parametr '-W' je tato hodnota ignorována.
+  -c <netascii|ascii|binary|octet> : Nepovinný. Specifikuje kódování přenášených dat, výchozí hodnota je 'binary'.
+  -a <IP address,port>             : Nepovinný. Specifikuje IPv4 nebo IPv6 adresu a port serveru. Výchozí hodnoty jsou '127.0.0.1,69'.
+  q                                : Bezpečně ukončí aplikaci.
+  exit                             : Bezpečně ukončí aplikaci.
+
+Detaily implementace:
+  Časový limit (parametr -t)
+    V případě, že uživatel časový limit nespecifikuje, je nastaven na 1s. Pokud jej uživatel specifikuje a server nepodporuje 
+    sjednávaní podmínek přenosu nebo tuto podmínku neimplementuje, zůstává časový limit na specifikované hodnotě uživatelem. 
+    Tímto způsobem může uživatel u serverů nepodporujících sjednávání podmínek přenosu ovlivnit ukončení přenosu v případech 
+    extrémně pomalého připojení, viz následující text. Pokud server na podmínku odpoví s jinou hodnotou, než specifikoval klient, 
+    pak je použita tato hodnota, i když to dle RFC 2349 není možné. V obou případech je o této skutečnosti uživatel informován 
+    výpisem. Ve všech případech je odesláno maximálně 5 stejných datagramů, pokud na žádný z nich není přijata relevantní odpověď, 
+    je usouzeno, že došlo k fatální chybě a přenos je přerušen.
+
+  Velikost přenášeného bloku dat (parametr -s)
+    Pokud server nepodporuje sjednávaní podmínek přenosu nebo tuto podmínku neimplementuje, je velikost přenášeného bloku dat 
+    nastavena na základní velikost (512 B) a uživatel je o této skutečnosti informován výpisem. Pokud server odpoví s menší 
+    hodnotou, než specifikoval klient, je použita tato hodnota. Pokud server odpoví s větší hodnotou, než specifikoval klient, 
+    což není dle RFC 2348 možné, je odeslána chyba a přenos je ukončen.
+  
+  Velikost přenášeného souboru
+    TODO
+
+
+Nedostatky implementace:
+  Neřeší tzv. Sorcerer's Apprentice Syndrome, viz https://en.wikipedia.org/wiki/Sorcerer%27s_Apprentice_Syndrome.
