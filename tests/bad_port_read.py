@@ -11,8 +11,8 @@ RAND_PORT = 5006
 sock_start = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 sock_start.bind((DST_IP, LISTEN_PORT))
 
-while True:
-#if True:
+#while True:
+if True:
     data, addr = sock_start.recvfrom(1500)
     KLIENT_PORT = addr[1]
 

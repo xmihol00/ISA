@@ -81,6 +81,11 @@ typedef struct
     long        transfer_size;      // velikost prenaseneho souboru, defualtne -1
     uint8_t     timeout;            // timeout v s, defaultne 0 
     bool        multicast;          // true pokud server odpovedel s multicast, jinak false
+    union
+    {
+        sockaddr_in IPv4;
+        sockaddr_in6 IPv6;
+    } address;                      // multicast IP adresa
 } negotiation_t;
 
 /**

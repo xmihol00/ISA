@@ -85,7 +85,11 @@ void ACK_header(char *buffer, ssize_t &size, uint16_t ack_number)
 negotiation_t parse_OACK(char *buffer, ssize_t size, bool blksize, bool timeout, bool tsize, bool multicast)//, sockaddr *address, socklen_t &addr_length)
 {
     // nastaveni defaultnich hodnot
-    negotiation_t negotiation { .block_size = -1, .transfer_size = -1, .timeout = 0, .multicast = false };
+    negotiation_t negotiation;
+    negotiation.block_size = -1;
+    negotiation.transfer_size = -1;
+    negotiation.multicast = false;
+    negotiation.timeout = 0;
     ssize_t done = 2;
     string option;
     string value;
@@ -126,24 +130,23 @@ negotiation_t parse_OACK(char *buffer, ssize_t size, bool blksize, bool timeout,
         }
         else if (option == MULTICAST && multicast)
         {
-            /*size_t pos = value.find(',');
+            size_t pos = value.find(',');
             if (pos != string::npos)
             {
                 value[pos] = '\0';
-                if (!inet_pton(AF_INET, value.c_str(), address))
+                if (!inet_pton(AF_INET, value.c_str(), &negotiation.address.IPv4.sin_addr))
                 {
-                    if (!inet_pton(AF_INET6, value.c_str(), address))
+                    if (!inet_pton(AF_INET6, value.c_str(), &negotiation.address.IPv6.sin6_addr))
                     {
                         throw exception();
                     }
-                    address->sa_family = AF_INET6;
-                    addr_length = sizeof(sockaddr_in6);
+                    negotiation.address.IPv6.sin6_family = AF_INET6;
                 }
                 else
                 {
-                    address->sa_family = AF_INET;
-                    addr_length = sizeof(sockaddr_in);
+                    negotiation.address.IPv4.sin_family = AF_INET;
                 }
+
             }
             else
             {
@@ -162,7 +165,7 @@ negotiation_t parse_OACK(char *buffer, ssize_t size, bool blksize, bool timeout,
                     // cislo portu out of range
                     throw exception();
                 }
-                ((sockaddr_in6 *)address)->sin6_port = port;
+                negotiation.address.IPv6.sin6_port = htons(port);
             }
             else
             {
@@ -170,15 +173,16 @@ negotiation_t parse_OACK(char *buffer, ssize_t size, bool blksize, bool timeout,
                 throw exception();
             }
 
-            if (value[pos + 1] != 1)
+            if (value[pos + 1] == '1')
             {
-                // nejedna se o master clienta
-                throw exception();
+                // tento klient je master klient
+                negotiation.multicast = true;
             }
             else
             {
-                negotiation.multicast = true;
-            }*/
+                // nejedna se o master klienta, neni podporovano
+                throw exception();
+            }
         }
         else
         {

@@ -129,10 +129,9 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
 
     ssize_t size = 0;
     uint16_t port = ((sockaddr_in6 *)address)->sin6_port;
-    //struct sockaddr_in6 recieved_address;
-    //memcpy(&recieved_address, address, addr_length);
-    //struct sockaddr *ptr_recieved_address = (struct sockaddr *) &recieved_address;
-    //socklen_t recv_lenght = sizeof(recieved_address);
+    struct sockaddr_in6 recieved_address;
+    memcpy(&recieved_address, address, addr_length);
+    struct sockaddr *ptr_recieved_address = (struct sockaddr *) &recieved_address;
     
     FILE *file = fopen(summary.file.c_str(), "w");
     if (file == nullptr)
@@ -170,11 +169,9 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
     while ((size = recvfrom(socket_fd, buffer, TFTP_DATAGRAM_SIZE, 0, address, &addr_length)) == -1 || // recv selhala
            (*opcode == DATA && ntohs(*block_number) != 1)); // prichozi datagram je nespravny
     retries = 0;
-    // ziskani TID serveru
-    
-    
-    //((sockaddr_in *)address)->sin_port = TID = recieved_address.sin6_port;
 
+    // ziskani TID serveru 
+    TID = ((sockaddr_in *)address)->sin_port;
 
     ack_number = *block_number;
     summary.lost_count--; // jeden datagram urcite ztracen nebyl
@@ -193,37 +190,40 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
         }
 
         // resetovani odrzenych dat
+        ack_number = 0; // indikuje prichod OACK
         summary.datagram_count = 0;
         summary.lost_count = 0;
         summary.blksize = data.block_size;
 
+        size = -1; // indikuje 1. cteni daneho bloku 
         while(true) // dokud neprisel datagram se spravnym TID
         {
             do
             {
-                summary.lost_count++;
-
-                if (retries++ > MAX_RETRIES)
+                if (size == -1) // doslo k vyprseni casoveho limitu, nebo se jedna o prvni ACK
                 {
-                    cerr << "Error: Transfer of data failed. Server timed out." << endl;
-                    size = data.block_size;
-                    goto cleanup;
-                }
+                    summary.lost_count++;
 
-                ACK_header(buffer, size, 0);
-                // odeslani ACK na OACK
-                if (sendto(socket_fd, buffer, size, 0, address, addr_length) != size)
-                {
-                    cerr << "Error: Transfer of data failed. Data could not be send fully." << endl;
-                    ERR_packet(buffer, size, NOT_DEFINED, "Data could not be send fully.");
-                    sendto(socket_fd, buffer, size, 0, address, addr_length);
-                    goto cleanup;
+                    if (retries++ > MAX_RETRIES)
+                    {
+                        cerr << "Error: Transfer of data failed. Server timed out." << endl;
+                        size = data.block_size;
+                        goto cleanup;
+                    }
+
+                    ACK_header(buffer, size, 0);
+                    // odeslani ACK na OACK
+                    if (sendto(socket_fd, buffer, size, 0, address, addr_length) != size)
+                    {
+                        cerr << "Error: Transfer of data failed. Data could not be send fully." << endl;
+                        ERR_packet(buffer, size, NOT_DEFINED, "Data could not be send fully.");
+                        sendto(socket_fd, buffer, size, 0, address, addr_length);
+                        goto cleanup;
+                    }
                 }
-            
-            // prijmuti 1. datoveho bloku
             }
-            while ((size = recvfrom(socket_fd, buffer, data.block_size + TFTP_HDR, 0, address, &addr_length)) == -1 || // recv neselhal
-                   (((sockaddr_in6 *)address)->sin6_port == TID && ntohs(*block_number) != 1 && *opcode == DATA)); // prichozi datagram je nespravny
+            while ((size = recvfrom(socket_fd, buffer, data.block_size + TFTP_HDR, 0, ptr_recieved_address, &addr_length)) == -1 || // recv neselhal
+                   (((sockaddr_in6 *)ptr_recieved_address)->sin6_port == TID && ntohs(*block_number) != 1 && *opcode == DATA)); // prichozi datagram je nespravny
 
             if (((sockaddr_in6 *)address)->sin6_port != TID) // spatne TID
             {
@@ -240,13 +240,16 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
             retries = 0;
             break;
         }
-        ack_number = *block_number; // nastaveni aktuakniho cisla ACK
     }
-    // server nerozumi podminkam prenosu
-    else if (*opcode == DATA)
+    
+    if (*opcode == DATA && ack_number != 0) // server nerozumi specifikaci podminek prenosu, ack_number zustalo nastaveno
     {
         cerr << "Warning: Server does not support Option Negotiation." << endl;
         data.block_size = TFTP_DATA_SIZE;
+    }
+    else if (*opcode == DATA) // OACK prislo
+    {
+        ack_number = *block_number; // nastaveni aktuakniho cisla ACK, po odpovedi na OACK
     }
     else if (*opcode == ERR)
     {
@@ -263,45 +266,49 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
     }
 
     size -= TFTP_HDR;
-    if (data.mode == BINARY) // binarni prenos
-    {
-        fwrite(&buffer[TFTP_HDR], 1, size, file);
-    }
-    else // prenos pomoci netascii
-    {
-        // parsovani netascii 
-        if (fwrite_from_netascii(file, size, &buffer[TFTP_HDR]))
-        {
-            cerr << "Error: Malformed packet recieved." << endl;
-            ERR_packet(ack_buff, size, NOT_DEFINED, "Malformed packet.");
-            sendto(socket_fd, ack_buff, size, 0, address, addr_length);
-            goto cleanup;
-        }
-    }
-
     // dokud neni prijat posledni blok souboru
     while (size == data.block_size)
     {
+        if (data.mode == BINARY) // binarni prenos
+        {
+            fwrite(&buffer[TFTP_HDR], 1, size, file);
+        }
+        else // prenos pomoci netascii
+        {
+            // parsovani netascii 
+            if (fwrite_from_netascii(file, size, &buffer[TFTP_HDR]))
+            {
+                cerr << "Error: Malformed packet recieved." << endl;
+                ERR_packet(ack_buff, size, NOT_DEFINED, "Malformed packet.");
+                sendto(socket_fd, ack_buff, size, 0, address, addr_length);
+                goto cleanup;
+            }
+        }
+    
+        size = -1;  // indikuje 1. cteni daneho bloku 
         while(true) // dokud prichazi datagramy se spatnym TID
         {
             do
             {
-                summary.lost_count++;
+                if (size == -1) // doslo k vyprseni casoveho limitu, nebo se jedna o prvni cteni daneho bloku dat
+                {
+                    summary.lost_count++;
 
-                if (retries++ > MAX_RETRIES)
-                {
-                    cerr << "Error: Transfer of data failed. Server timed out." << endl;
-                    size = data.block_size;
-                    goto cleanup;
-                }
-                // ACK posledniho datoveho packetu 
-                ACK_header(ack_buff, size, ack_number);
-                if (sendto(socket_fd, ack_buff, size, 0, address, addr_length) != size)
-                {
-                    cerr << "Error: Transfer of data failed. Data could not be send fully." << endl;
-                    ERR_packet(buffer, size, NOT_DEFINED, "Data could not be send fully.");
-                    sendto(socket_fd, buffer, size, 0, address, addr_length);
-                    goto cleanup;
+                    if (retries++ > MAX_RETRIES)
+                    {
+                        cerr << "Error: Transfer of data failed. Server timed out." << endl;
+                        size = data.block_size;
+                        goto cleanup;
+                    }
+                    // ACK posledniho datoveho packetu 
+                    ACK_header(ack_buff, size, ack_number);
+                    if (sendto(socket_fd, ack_buff, size, 0, address, addr_length) != size)
+                    {
+                        cerr << "Error: Transfer of data failed. Data could not be send fully." << endl;
+                        ERR_packet(buffer, size, NOT_DEFINED, "Data could not be send fully.");
+                        sendto(socket_fd, buffer, size, 0, address, addr_length);
+                        goto cleanup;
+                    }     
                 }
             } 
             while ((size = recvfrom(socket_fd, buffer, data.block_size + TFTP_HDR, 0, address, &addr_length)) == -1 || // recv neselhal
@@ -341,21 +348,6 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
 
         retries = 0;
         size -= TFTP_HDR;
-        if (data.mode == BINARY) // zapis binarniho souboru
-        {
-            fwrite(&buffer[TFTP_HDR], 1, size, file);
-        }
-        else
-        {
-            // konverze a zapis netascii souboru
-            if (fwrite_from_netascii(file, size, &buffer[TFTP_HDR]))
-            {
-                cerr << "Error: Malformed packet recieved." << endl;
-                ERR_packet(ack_buff, size, NOT_DEFINED, "Malformed packet.");
-                sendto(socket_fd, ack_buff, size, 0, address, addr_length);
-                goto cleanup;
-            }
-        }
     }
     // cteni probehlo uspesne
     summary.success = true;
@@ -381,6 +373,7 @@ transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t addr
 {
     uint8_t retries = 0;  // pocet pokusu o znovuodeslani ztraceneho datagramu
     in_port_t TID = 0;    // TID serveru
+    uint16_t port = ((sockaddr_in *)address)->sin_port;
     // inicializace podminek prenosu
     TFTP_options_t options = { .file_URL = data.file_URL, .opcode = WRQ, .mode = data.mode, .block_size = data.block_size, 
                                .transfer_size = 0, .timeout = data.timeout, .multicast = data.multicast };
@@ -401,10 +394,6 @@ transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t addr
     // adresa pro prijem datagramu
     ssize_t size = 0;
     ssize_t err_size = ACK_BUFFER_SIZE;
-    struct sockaddr_in6 recieved_address;
-    memcpy(&recieved_address, address, addr_length);
-    struct sockaddr *ptr_recieved_address = (struct sockaddr *) &recieved_address;
-    socklen_t recv_lenght = sizeof(recieved_address);
 
     FILE *file = fopen(data.file_URL.c_str(), "r");
     if (file == nullptr)
@@ -426,7 +415,7 @@ transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t addr
     do // kontaktovani serveru
     {
         // nastaveni defaultniho TID serveru (69 nebo specifikovano uzivatelelem)
-        ((sockaddr_in *)address)->sin_port = recieved_address.sin6_port;
+        ((sockaddr_in *)address)->sin_port = port;
         
         if (retries++ > MAX_RETRIES)
         {
@@ -446,10 +435,10 @@ transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t addr
             goto cleanup;
         }
     } 
-    while ((size = recvfrom(socket_fd, ack_buff, ACK_BUFFER_SIZE, 0, ptr_recieved_address, &recv_lenght)) == -1 || // recv selhalo
+    while ((size = recvfrom(socket_fd, ack_buff, ACK_BUFFER_SIZE, 0, address, &addr_length)) == -1 || // recv selhalo
            (*ack_opcode == ACK && *ack_block_number != 0)); // nespravny ACK datagram
     
-    ((sockaddr_in *)address)->sin_port = TID = recieved_address.sin6_port; // nastaveni TID serveru
+    TID = ((sockaddr_in *)address)->sin_port; // nastaveni TID serveru
     retries = 0;
 
     if (*ack_opcode == OACK) // server podporuje option negotiation
@@ -497,36 +486,40 @@ transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t addr
             size = fread_to_netascii(file, data.block_size, &buffer[TFTP_HDR]);
         }
 
+        err_size = -1; // indikuje prvni odeslani daneho bloku
         while(true) // dokud prichazi datagramy se spatnym TID
         {
             do
             {
-                // vypocet odeslanych a ztracenych dat
-                summary.datagram_count++;
-                summary.data_size += size;
-                summary.lost_count++;
-                summary.lost_size += size;
-
-                if (retries++ > MAX_RETRIES)
+                if (err_size == -1) // odeslani dat jen v pripade timeout nebo prvniho odeslani
                 {
-                    cerr << "Error: Transfer of data failed. Server timed out." << endl;
-                    goto cleanup;
-                }
-
-                if (sendto(socket_fd, buffer, size + TFTP_HDR, 0, address, addr_length) != size + TFTP_HDR)
-                {
-                    cerr << "Error: Transfer of data failed. Data could not be send fully." << endl;
-                    ERR_packet(buffer, size, NOT_DEFINED, "Data could not be send fully.");
-                    sendto(socket_fd, buffer, size, 0, address, addr_length);
+                    // vypocet odeslanych a ztracenych dat
                     summary.datagram_count++;
                     summary.data_size += size;
-                    goto cleanup;
+                    summary.lost_count++;
+                    summary.lost_size += size;
+
+                    if (retries++ > MAX_RETRIES)
+                    {
+                        cerr << "Error: Transfer of data failed. Server timed out." << endl;
+                        goto cleanup;
+                    }
+
+                    if (sendto(socket_fd, buffer, size + TFTP_HDR, 0, address, addr_length) != size + TFTP_HDR)
+                    {
+                        cerr << "Error: Transfer of data failed. Data could not be send fully." << endl;
+                        ERR_packet(buffer, size, NOT_DEFINED, "Data could not be send fully.");
+                        sendto(socket_fd, buffer, size, 0, address, addr_length);
+                        summary.datagram_count++;
+                        summary.data_size += size;
+                        goto cleanup;
+                    }
                 }
             }
-            while (recvfrom(socket_fd, ack_buff, ACK_BUFFER_SIZE, 0, ptr_recieved_address, &recv_lenght) == -1 ||  // recv je neuspesna
-                   (recieved_address.sin6_port == TID && *ack_block_number != *block_number && *ack_opcode == ACK)); // prijaty datagram neni spravny
+            while ((err_size = recvfrom(socket_fd, ack_buff, ACK_BUFFER_SIZE, 0, address, &addr_length)) == -1 ||  // recv je neuspesna
+                   (((sockaddr_in *)address)->sin_port == TID && *ack_block_number != *block_number && *ack_opcode == ACK)); // prijaty datagram neni spravny
             
-            if (recieved_address.sin6_port != TID)
+            if (((sockaddr_in *)address)->sin_port != TID)
             {
                 cerr << "Warning: Recieved TID does not match the estabhlished one, server informed and transfer continues." << endl;
                 ERR_packet(ack_buff, err_size, UNKNOWN_ID, "Incorrect TID.");
@@ -586,7 +579,7 @@ void set_timeout(int socket_fd, uint8_t timeout)
     time_out.tv_usec = 0;
     if (setsockopt(socket_fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&time_out, sizeof(time_out)) == -1)
     {
-        cerr << "Warning: Timeout could not be set, program might halt. In this case use Ctrl+C to terminate." << endl;
+        cerr << "Warning: Timeout could not be set, program may halt. In this case use Ctrl+C to terminate." << endl;
     }
 }
 
@@ -772,16 +765,91 @@ bool set_negotioation(int &socket_fd, char *buffer, ssize_t &size, transfer_data
         }
     }
 
-    /*if (data.multicast) // byl specifikovan parametr -m
+    if (data.multicast && negotiation.multicast) // byl specifikovan parametr -m
     {
-        close(socket_fd);
-        socket_fd = socket(address->sa_family, SOCK_DGRAM , 0);
-        if (socket_fd == -1)
+        uint32_t reuse = 1;
+        close(socket_fd); // zavreni dosud pouzivaneho socketu
+        if (negotiation.address.IPv4.sin_family == AF_INET)
         {
-            cerr << "Error: Could not open socket." << endl;
-            return true;
+            // adresa multicastove skupiny
+            struct ip_mreq group;
+            group.imr_multiaddr = negotiation.address.IPv4.sin_addr;
+            group.imr_interface.s_addr = htonl(INADDR_ANY);
+
+            // znovu otevereni socketu pro moznost nabindovat multicastovy port
+            if ((socket_fd = socket(AF_INET , SOCK_DGRAM , 0)) == -1)
+            {
+                cerr << "Error: Could not open socekt for multicast." << endl;
+                return true;
+            }
+
+            // nastaveni portu specifikovaneho pro multicast pro pripojeni vice procesu
+            if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) == -1)
+            {
+                cerr << "Error: Could not set socket address reusable." << endl;
+                ERR_packet(buffer, size, NOT_DEFINED, "Could not set socket address reusable.");
+                return true;
+            }
+
+            // nastaveni portu specifikovaneho pro multicast pro pripojeni vice procesu
+            if (bind(socket_fd, (sockaddr *)&negotiation.address.IPv4, sizeof(negotiation.address.IPv4)) == -1)
+            {
+                cerr << "Error: Could not bind multicast port." << endl;
+                ERR_packet(buffer, size, NOT_DEFINED, "Could not bind multicast port.");
+                return true;
+            }
+
+            // nastaveni src portu specifikovaneho pro multicast
+            if (setsockopt(socket_fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &group, sizeof(group)) == -1)
+            {
+                cerr << "Error: Could not enter multicast group." << endl;
+                ERR_packet(buffer, size, NOT_DEFINED, "Could not enter multicast group.");
+                return true;
+            }
         }
-    }*/
+        else
+        {
+            // adresa multicastove skupiny
+            struct ipv6_mreq group;
+            group.ipv6mr_interface = 0;
+            group.ipv6mr_multiaddr = negotiation.address.IPv6.sin6_addr;
+
+            // otevereni socketu pro moznost nastavit multicastovy port
+            if ((socket_fd = socket(AF_INET6 , SOCK_DGRAM , 0)) == -1)
+            {
+                cerr << "Error: Could not open socekt for multicast." << endl;
+                return true;
+            }
+
+            // nastaveni portu specifikovaneho pro multicast pro pripojeni vice procesu
+            if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) == -1)
+            {
+                cerr << "Error: Could not set socket address reusable." << endl;
+                ERR_packet(buffer, size, NOT_DEFINED, "Could not set socket address reusable.");
+                return true;
+            }
+
+            // nastaveni src portu specifikovaneho pro multicast
+            if (bind(socket_fd, (sockaddr *)&negotiation.address.IPv6, sizeof(negotiation.address.IPv6)) == -1)
+            {
+                cerr << "Error: Could not bind multicast port." << endl;
+                ERR_packet(buffer, size, NOT_DEFINED, "Could not bind multicast port.");
+                return true;
+            }
+
+            // pripojeni do multicastove skupiny (provede OS)
+            if (setsockopt(socket_fd, IPPROTO_IPV6, IPV6_ADD_MEMBERSHIP, &group, sizeof(group)) == -1)
+            {
+                cerr << "Error: Could not enter multicast group." << endl;
+                ERR_packet(buffer, size, NOT_DEFINED, "Could not enter multicast group.");
+                return true;
+            }
+        }
+    }
+    else if (data.multicast)
+    {
+        cerr << "Warning: Server did not recognize multicast option. Transfer continues via unicast." << endl;        
+    }
 
     return false;
 }

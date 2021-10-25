@@ -54,8 +54,11 @@ Detaily implementace:
     což není dle RFC 2348 možné, je odeslána chyba a přenos je ukončen.
   
   Velikost přenášeného souboru
-    TODO
+    Tuto podmínku nespecifikuje uživatel. Klient ji zasílá u všech žádostí o přenos, které probíhají binární formou. U kódování 
+    ascii není možné před začátkem přenosu jednoduše zjistit velikost přenášeného souboru, proto zde podmínka není specifikována.
 
 
 Nedostatky implementace:
-  Neřeší tzv. Sorcerer's Apprentice Syndrome, viz https://en.wikipedia.org/wiki/Sorcerer%27s_Apprentice_Syndrome.
+  Podpora multicast je implementována pouze velmi zjednodušeně. V případě specifikování přenosu přes mutlicast, je po odpovědi 
+  serveru s adresou a portem uzavřen aktuálně používaný soket a otevřen nový, který je nastaven přijímat datagramy na získané adrese. 
+  Vše ostatní zůstává nezměněno. Testována byla pouze IPv4 verze, implementována je i IPv6.

@@ -20,8 +20,6 @@ while True:
     sock.bind((DST_IP, RAND_PORT))
     sock.sendto(str.encode("\0\6BLKSIZE\000252\000"), addr)
     sleep(0.05)
-    sock.sendto(str.encode("\0\4\0\0"), addr)
-    sleep(0.05)
     sock.sendto(str.encode("\0\4\0\1"), addr)
     sleep(0.05)
     sock.sendto(str.encode("\0\4\0\2"), addr)
