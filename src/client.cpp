@@ -128,10 +128,11 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
     char ack_buff[ACK_BUFFER_SIZE] = {0, };
 
     ssize_t size = 0;
-    struct sockaddr_in6 recieved_address;
-    memcpy(&recieved_address, address, addr_length);
-    struct sockaddr *ptr_recieved_address = (struct sockaddr *) &recieved_address;
-    socklen_t recv_lenght = sizeof(recieved_address);
+    uint16_t port = ((sockaddr_in6 *)address)->sin6_port;
+    //struct sockaddr_in6 recieved_address;
+    //memcpy(&recieved_address, address, addr_length);
+    //struct sockaddr *ptr_recieved_address = (struct sockaddr *) &recieved_address;
+    //socklen_t recv_lenght = sizeof(recieved_address);
     
     FILE *file = fopen(summary.file.c_str(), "w");
     if (file == nullptr)
@@ -147,7 +148,7 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
         summary.lost_count++;
 
         // nastaveni defaultniho TID serveru (69 nebo specifikovano uzivatelelem)
-        ((sockaddr_in *)address)->sin_port = recieved_address.sin6_port; 
+        ((sockaddr_in *)address)->sin_port = port; 
         
         if (retries++ > MAX_RETRIES)
         {
@@ -166,11 +167,15 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
         }
     // snaha o navazani komuniakce se serverem    
     }
-    while ((size = recvfrom(socket_fd, buffer, TFTP_DATAGRAM_SIZE, 0, ptr_recieved_address, &recv_lenght)) == -1 || // recv selhala
+    while ((size = recvfrom(socket_fd, buffer, TFTP_DATAGRAM_SIZE, 0, address, &addr_length)) == -1 || // recv selhala
            (*opcode == DATA && ntohs(*block_number) != 1)); // prichozi datagram je nespravny
     retries = 0;
     // ziskani TID serveru
-    ((sockaddr_in *)address)->sin_port = TID = recieved_address.sin6_port;
+    
+    
+    //((sockaddr_in *)address)->sin_port = TID = recieved_address.sin6_port;
+
+
     ack_number = *block_number;
     summary.lost_count--; // jeden datagram urcite ztracen nebyl
     summary.datagram_count++;
@@ -179,8 +184,9 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
     if (*opcode == OACK)
     {
         // ziskani podminek prenosu odsouhlasenych serverem
-        if (set_negotioation(socket_fd, address, addr_length, buffer, size, data))
+        if (set_negotioation(socket_fd, buffer, size, data))
         {
+            sendto(socket_fd, buffer, size, 0, address, addr_length);
             size = data.block_size;
             summary.datagram_count = 0;
             goto cleanup;
@@ -216,10 +222,10 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
             
             // prijmuti 1. datoveho bloku
             }
-            while ((size = recvfrom(socket_fd, buffer, data.block_size + TFTP_HDR, 0, ptr_recieved_address, &recv_lenght)) == -1 || // recv neselhal
-                   (recieved_address.sin6_port == TID && ntohs(*block_number) != 1 && *opcode == DATA)); // prichozi datagram je nespravny
+            while ((size = recvfrom(socket_fd, buffer, data.block_size + TFTP_HDR, 0, address, &addr_length)) == -1 || // recv neselhal
+                   (((sockaddr_in6 *)address)->sin6_port == TID && ntohs(*block_number) != 1 && *opcode == DATA)); // prichozi datagram je nespravny
 
-            if (recieved_address.sin6_port != TID) // spatne TID
+            if (((sockaddr_in6 *)address)->sin6_port != TID) // spatne TID
             {
                 cerr << "Warning: Recieved TID does not match the estabhlished one, server informed and transfer continues." << endl;
                 ERR_packet(ack_buff, size, UNKNOWN_ID, "Incorrect TID.");
@@ -298,10 +304,10 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
                     goto cleanup;
                 }
             } 
-            while ((size = recvfrom(socket_fd, buffer, data.block_size + TFTP_HDR, 0, ptr_recieved_address, &recv_lenght)) == -1 || // recv neselhal
-                   (recieved_address.sin6_port == TID && ntohs(*block_number) != ntohs(ack_number) + 1 && *opcode == DATA)); // ziskany datagram je nespravny
+            while ((size = recvfrom(socket_fd, buffer, data.block_size + TFTP_HDR, 0, address, &addr_length)) == -1 || // recv neselhal
+                   (((sockaddr_in6 *)address)->sin6_port == TID && ntohs(*block_number) != ntohs(ack_number) + 1 && *opcode == DATA)); // ziskany datagram je nespravny
             
-            if (recieved_address.sin6_port != TID) // spatne TID
+            if (((sockaddr_in6 *)address)->sin6_port != TID) // spatne TID
             {
                 cerr << "Warning: Recieved TID does not match the estabhlished one, server informed and transfer continues." << endl;
                 ERR_packet(ack_buff, size, UNKNOWN_ID, "Incorrect TID.");
@@ -448,8 +454,9 @@ transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t addr
 
     if (*ack_opcode == OACK) // server podporuje option negotiation
     {
-        if (set_negotioation(socket_fd, address, addr_length, ack_buff, size, data))
+        if (set_negotioation(socket_fd, ack_buff, size, data))
         {
+            sendto(socket_fd, buffer, size, 0, address, addr_length);
             summary.datagram_count++;
             summary.data_size += size;
             goto cleanup;
@@ -696,24 +703,23 @@ failed:
     return mtu;
 }
 
-bool set_negotioation(int socket_fd, struct sockaddr *address, socklen_t addr_length, char *buffer, ssize_t &size, transfer_data_t &data)
+bool set_negotioation(int &socket_fd, char *buffer, ssize_t &size, transfer_data_t &data)
 {
     negotiation_t negotiation;
     
     try
     {
         // parsovani odpovedi serveru
-        negotiation = parse_OACK(buffer, size, data.block_size != TFTP_DATA_SIZE, data.timeout != 0, data.mode == BINARY, data.multicast, address, addr_length);
+        negotiation = parse_OACK(buffer, size, data.block_size != TFTP_DATA_SIZE, data.timeout != 0, data.mode == BINARY, data.multicast);
     }
     catch(const std::exception& e)
     {
         cerr << "Error: Could not parse Option Negotiation datagram, unknown or unspecified option recieved." << endl;
         ERR_packet(buffer, size, BAD_OACK, "Could no parse OACK datagram.");
-        sendto(socket_fd, buffer, size, 0, address, addr_length);
         return true;
     }
 
-    if (data.block_size != TFTP_DATA_SIZE)
+    if (data.block_size != TFTP_DATA_SIZE) // byl specifikovan parametr -s
     {
         if (negotiation.block_size == -1) // server neodpovedel na velikost bloku
         {
@@ -727,7 +733,6 @@ bool set_negotioation(int socket_fd, struct sockaddr *address, socklen_t addr_le
             {
                 cerr << "Error: Server specified to small block size." << endl;
                 ERR_packet(buffer, size, BAD_OACK, "Block size too small.");
-                sendto(socket_fd, buffer, size, 0, address, addr_length);
                 return true;
             }
         }
@@ -735,12 +740,11 @@ bool set_negotioation(int socket_fd, struct sockaddr *address, socklen_t addr_le
         {
             cerr << "Error: Server specified block size larger than offered." << endl;
             ERR_packet(buffer, size, BAD_OACK, "Block size larger than specified by client.");
-            sendto(socket_fd, buffer, size, 0, address, addr_length);
             return true;
         }
     }
 
-    if (data.timeout != 0)
+    if (data.timeout != 0) // byl specifikovan parametr -t
     {
         if (negotiation.timeout == 0) // server neodpovedel na timeout 
         {
@@ -754,7 +758,7 @@ bool set_negotioation(int socket_fd, struct sockaddr *address, socklen_t addr_le
         }
     }
 
-    if (data.mode == BINARY)
+    if (data.mode == BINARY) // byla zaslana option tsize
     {
         if (negotiation.transfer_size == -1) // server neodpovedel na velikost souboru
         {
@@ -764,10 +768,20 @@ bool set_negotioation(int socket_fd, struct sockaddr *address, socklen_t addr_le
         {
             cerr << "Error: Transfered file is larger than available disk space." << endl;
             ERR_packet(buffer, size, DISK_FULL, "File size exeeds available disk space.");
-            sendto(socket_fd, buffer, size, 0, address, addr_length);
             return true;
         }
     }
+
+    /*if (data.multicast) // byl specifikovan parametr -m
+    {
+        close(socket_fd);
+        socket_fd = socket(address->sa_family, SOCK_DGRAM , 0);
+        if (socket_fd == -1)
+        {
+            cerr << "Error: Could not open socket." << endl;
+            return true;
+        }
+    }*/
 
     return false;
 }

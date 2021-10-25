@@ -124,4 +124,4 @@ string err_code_value(uint16_t err_code);
  * @param tsize true, pokud byl zaslan dotaz na velikost prenaseneho souboru, jinak false.
  * @return ziskane nebo defaultni hodnoty podminek.
  */
-negotiation_t parse_OACK(char *buffer, ssize_t size, bool blksize, bool timeout, bool tsize, bool multicast, sockaddr *address, socklen_t &addr_length);
+negotiation_t parse_OACK(char *buffer, ssize_t size, bool blksize, bool timeout, bool tsize, bool multicast); //, sockaddr *address, socklen_t &addr_length);

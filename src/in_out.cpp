@@ -273,6 +273,8 @@ int parse_line(const string &line, arguments_t &arguments)
         inet_pton(AF_INET, "127.0.0.1", &arguments.address.ipv4);
     }
 
+    arguments.multicast = arguments.multicast && arguments.transfer_mode == READ;
+
     return 1;
 }
 

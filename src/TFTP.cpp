@@ -82,7 +82,7 @@ void ACK_header(char *buffer, ssize_t &size, uint16_t ack_number)
     size = 4;
 }
 
-negotiation_t parse_OACK(char *buffer, ssize_t size, bool blksize, bool timeout, bool tsize, bool multicast, sockaddr *address, socklen_t &addr_length)
+negotiation_t parse_OACK(char *buffer, ssize_t size, bool blksize, bool timeout, bool tsize, bool multicast)//, sockaddr *address, socklen_t &addr_length)
 {
     // nastaveni defaultnich hodnot
     negotiation_t negotiation { .block_size = -1, .transfer_size = -1, .timeout = 0, .multicast = false };
@@ -126,7 +126,7 @@ negotiation_t parse_OACK(char *buffer, ssize_t size, bool blksize, bool timeout,
         }
         else if (option == MULTICAST && multicast)
         {
-            size_t pos = value.find(',');
+            /*size_t pos = value.find(',');
             if (pos != string::npos)
             {
                 value[pos] = '\0';
@@ -178,7 +178,7 @@ negotiation_t parse_OACK(char *buffer, ssize_t size, bool blksize, bool timeout,
             else
             {
                 negotiation.multicast = true;
-            }
+            }*/
         }
         else
         {
