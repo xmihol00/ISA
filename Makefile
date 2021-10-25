@@ -1,11 +1,11 @@
 
 .PHONY: all clean run pack
 
-run:
-	@cd src && make -j && cd - && ./mytftpclient
-
 all:
 	@cd src && make -j
+
+run:
+	@cd src && make -j && cd - && ./mytftpclient
 
 clean:
 	@rm -rf mytftpclient build xmihol00.tar

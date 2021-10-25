@@ -60,6 +60,13 @@ void RQ_header(char *buffer, ssize_t &size, TFTP_options_t options)
         strcpy(&buffer[size], value.c_str());
         size += value.size() + 1;
     }
+
+    if (options.multicast && options.opcode == RRQ)
+    {
+        strcpy(&buffer[size], MULTICAST);
+        size += MULTICAST_LEN;
+        buffer[size++] = 0;
+    }
 }
 
 void ACK_header(char *buffer, ssize_t &size, uint16_t ack_number)
@@ -75,10 +82,10 @@ void ACK_header(char *buffer, ssize_t &size, uint16_t ack_number)
     size = 4;
 }
 
-negotiation_t parse_OACK(char *buffer, ssize_t size, bool blksize, bool timeout, bool tsize)
+negotiation_t parse_OACK(char *buffer, ssize_t size, bool blksize, bool timeout, bool tsize, bool multicast, sockaddr *address, socklen_t &addr_length)
 {
     // nastaveni defaultnich hodnot
-    negotiation_t negotiation { .block_size = -1, .transfer_size = -1, .timeout = 0 };
+    negotiation_t negotiation { .block_size = -1, .transfer_size = -1, .timeout = 0, .multicast = false };
     ssize_t done = 2;
     string option;
     string value;
@@ -108,6 +115,7 @@ negotiation_t parse_OACK(char *buffer, ssize_t size, bool blksize, bool timeout,
             size_t res = stoul(value);
             if (res > UINT8_MAX)
             {
+                // timeout out of range
                 throw exception();    
             }
             negotiation.timeout = res;
@@ -115,6 +123,62 @@ negotiation_t parse_OACK(char *buffer, ssize_t size, bool blksize, bool timeout,
         else if (option == TSIZE && tsize)
         {
             negotiation.transfer_size = stol(value);
+        }
+        else if (option == MULTICAST && multicast)
+        {
+            size_t pos = value.find(',');
+            if (pos != string::npos)
+            {
+                value[pos] = '\0';
+                if (!inet_pton(AF_INET, value.c_str(), address))
+                {
+                    if (!inet_pton(AF_INET6, value.c_str(), address))
+                    {
+                        throw exception();
+                    }
+                    address->sa_family = AF_INET6;
+                    addr_length = sizeof(sockaddr_in6);
+                }
+                else
+                {
+                    address->sa_family = AF_INET;
+                    addr_length = sizeof(sockaddr_in);
+                }
+            }
+            else
+            {
+                // adresa nelze ziskat
+                throw exception();
+            }
+
+            value = value.substr(pos + 1);
+            pos = value.find(',');
+            if (pos != string::npos)
+            {
+                value[pos] = '\0';
+                unsigned long port = stoul(value);
+                if (port > UINT16_MAX)
+                {
+                    // cislo portu out of range
+                    throw exception();
+                }
+                ((sockaddr_in6 *)address)->sin6_port = port;
+            }
+            else
+            {
+                // port nelze ziskat
+                throw exception();
+            }
+
+            if (value[pos + 1] != 1)
+            {
+                // nejedna se o master clienta
+                throw exception();
+            }
+            else
+            {
+                negotiation.multicast = true;
+            }
         }
         else
         {

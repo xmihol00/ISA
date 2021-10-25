@@ -703,7 +703,7 @@ bool set_negotioation(int socket_fd, struct sockaddr *address, socklen_t addr_le
     try
     {
         // parsovani odpovedi serveru
-        negotiation = parse_OACK(buffer, size, data.block_size != TFTP_DATA_SIZE, data.timeout != 0, data.mode == BINARY);
+        negotiation = parse_OACK(buffer, size, data.block_size != TFTP_DATA_SIZE, data.timeout != 0, data.mode == BINARY, data.multicast, address, addr_length);
     }
     catch(const std::exception& e)
     {

@@ -38,6 +38,8 @@ using namespace std;
 #define TIMEOUT_LEN 8
 #define TSIZE "tsize"
 #define TSIZE_LEN 6
+#define MULTICAST "multicast"
+#define MULTICAST_LEN 10
 
 enum opcode_t
 {
@@ -78,6 +80,7 @@ typedef struct
     int         block_size;         // velikost prenaseneho bloku, defaultne -1
     long        transfer_size;      // velikost prenaseneho souboru, defualtne -1
     uint8_t     timeout;            // timeout v s, defaultne 0 
+    bool        multicast;          // true pokud server odpovedel s multicast, jinak false
 } negotiation_t;
 
 /**
@@ -121,4 +124,4 @@ string err_code_value(uint16_t err_code);
  * @param tsize true, pokud byl zaslan dotaz na velikost prenaseneho souboru, jinak false.
  * @return ziskane nebo defaultni hodnoty podminek.
  */
-negotiation_t parse_OACK(char *buffer, ssize_t size, bool blksize, bool timeout, bool tsize);
+negotiation_t parse_OACK(char *buffer, ssize_t size, bool blksize, bool timeout, bool tsize, bool multicast, sockaddr *address, socklen_t &addr_length);
