@@ -16,8 +16,8 @@ void help_msg()
     cout << "   -R                               : Compulsory, cannot be combined with '-W' option. Specifies reading a file from server." << endl;
     cout << "   -W                               : Compulsory, cannot be combined with '-R' option. Specifies writing a file to server." << endl;
     cout << "   -d <filepath/filename>           : Compulsory. Specifies the path to a read or written file and its name." << endl;
-    cout << "   -t <0-255 inclusive>             : Optional. Specifies the used timeout in seconds before potentionaly lost datagram" << endl;
-    cout << "                                      is resend. The default value is 1 s." << endl;
+    cout << "   -t <0-255 inclusive>             : Optional. Specifies the used timeout in seconds before potentionaly lost datagram is" << endl;
+    cout << "                                      resend. The default value is 1 s." << endl;
     cout << "   -s <1-2147483647 inclusive>      : Optional. Specifies the used block size of transported data in one datagram." << endl; 
     cout << "                                      Larger values may be replaced with the MTU of the system." << endl;
     cout << "   -m                               : Optional. Specifies the use of multicast for reading a file from server." << endl;
@@ -25,8 +25,8 @@ void help_msg()
     cout << "   -c <netascii|ascii|binary|octet> : Optional. Specifies the used encoding of transfered data. Default value is 'binary'." << endl;
     cout << "   -a <IP address,port>             : Optional. Specifies the IPv4 or IPv6 address and port, on which the server is listening." << endl;
     cout << "                                      Default values are '127.0.0.1,69'." << endl;
-    cout << "   q                                : Safely termiantes the application." << endl;
-    cout << "   exit                             : Safely termiantes the application." << endl;
+    cout << "   <q|exit>                         : Safely termiantes the application." << endl;
+    cout << "   <?|h>                            : Prints this help message." << endl;
 }
 
 int parse_line(const string &line, arguments_t &arguments)

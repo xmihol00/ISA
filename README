@@ -7,15 +7,15 @@
 // Popis:       README soubor se strukturou projektu, navodem pouziti a detaily implementace.
 //====================================================================================================================
 
-Adresářová struktura projektu:
+Adresářová a souborová struktura projektu:
 --|
-  |-- build/        - složka vygenerována po spustění příkazu make obsahující *.o a *.d soubory
+  |-- build/        - adresář vygenerována po spustění příkazu make obsahující *.o a *.d soubory
   |
-  |-- src/          - složka obsahující *.cpp a *.h s implmentací TFTPv2 klienta a Makefie
+  |-- src/          - adresář obsahující *.cpp a *.h s implmentací TFTPv2 klienta a Makefie
   |
-  |-- tests/        - složka obsahuje soubory a skripty použité pro testování
+  |-- tests/        - adresář obsahuje soubory a skripty použité pro testování
   |
-  |-- Makefile      - slouží ke spuštění Makefile ve složce src
+  |-- Makefile      - slouží ke spuštění Makefile v adresáři src
   |
   |-- manual.pdf    - soubor obsahující dokumetaci 
   |
@@ -23,19 +23,67 @@ Adresářová struktura projektu:
   |
   |-- README
 
+
 Použití příkazové řádky:
   -R                               : Povinný, nelze kombinovat s parametrem '-W'. Specifikuje čtení souboru ze serveru.
   -W                               : Povinný, nelze kombinovat s parametrem '-R'. Specifikuje zápis souboru na serveru.
   -d <cesta/jmeno>                 : Povinný. Specifikuje cestu k souboru a jeho jméno.
   -t <0-255 včetně>                : Nepovinný. Specifikuje použité časové prodlení před znovu odesláním potenciálně ztraceného paketu.
+                                     Výchozí hodnota je 1 s.
   -s <1-2147483647 včetně>         : Nepovinný. Specifikuje použitou velikost bloku dat posílaných v jednom datagramu. Větší hodnoty 
-                                     mohou být přepsány MTU systému.
-  -m                               : Nepovinný. Specifikuje použití multicast pro čtení souboru ze serveru. Pokud je specifikován 
+                                     mohou být přepsány minimálním MTU systému.
+  -m                               : Nepovinný. Specifikuje použití multicastu pro čtení souboru ze serveru. Pokud je specifikován 
                                      parametr '-W' je tato hodnota ignorována.
   -c <netascii|ascii|binary|octet> : Nepovinný. Specifikuje kódování přenášených dat, výchozí hodnota je 'binary'.
   -a <IP address,port>             : Nepovinný. Specifikuje IPv4 nebo IPv6 adresu a port serveru. Výchozí hodnoty jsou '127.0.0.1,69'.
-  q                                : Bezpečně ukončí aplikaci.
-  exit                             : Bezpečně ukončí aplikaci.
+  <q|exit>                         : Bezpečně ukončí aplikaci.
+  <?|h>                            : Vypíše zprávu s nápovědou.
+
+
+Příklady spuštění a výpisu programu:
+  > -W -d file
+  Writing file 'file' ...
+  
+  Writing file 'file' succeeded.
+  Transfer summary:
+     - 1 ms elapsed during the transfer,
+     - 1024 B of data were sent in 3 datagrams of a maximum data size 512 B.
+
+  > -W -d tests/hi -a 192.168.1.147,69 -s 25 -c ascii
+  Writing file 'hi' ...
+
+  Writing file 'hi' succeeded.
+  Transfer summary:
+     - 0 ms elapsed during the transfer,
+     - 4 B of data were sent in 1 datagram of a maximum data size 25 B.
+  
+  > -m -c octet -t 5 -d tests/hi -R
+  Reading file 'hi' ...
+
+  Reading file 'hi' succeeded.
+  Transfer summary:
+     - 0 ms elapsed during the transfer,
+     - 3 B of data were recieved in 1 datagram of a maximum data size 512 B.
+
+  > -s 85269 -a :: , 69 -d tests/hello -R  
+  Warning: Specified block size exceeds minimum MTU of size 1448, which is used instead.
+  Reading file 'hello' ...
+  Error: Transfer of data failed. Server timed out.
+
+  Reading file 'hello' failed.
+  Transfer summary:
+     - 6124 ms elapsed before failure,
+     - 0 B including potential errror message recieved before failure occured in 0 datagrams of a maximum data size 512 B.
+  
+  > -m -c ascii -s 10 -t 5 -d tests/hi -R
+  Reading file 'hi' ...
+  Error: Transfer of data failed. Server timed out.
+
+  Reading file 'hi' failed.
+  Transfer summary:
+     - 30798 ms elapsed before failure,
+     - 0 B including potential errror message recieved before failure occured in 0 datagrams of a maximum data size 512 B.
+
 
 Detaily implementace:
   Časový limit (parametr -t)
@@ -59,6 +107,5 @@ Detaily implementace:
 
 
 Nedostatky implementace:
-  Podpora multicast je implementována pouze velmi zjednodušeně. V případě specifikování přenosu přes mutlicast, je po odpovědi 
-  serveru s adresou a portem uzavřen aktuálně používaný soket a otevřen nový, který je nastaven přijímat datagramy na získané adrese. 
-  Vše ostatní zůstává nezměněno. Testována byla pouze IPv4 verze, implementována je i IPv6.
+  - IPv6 multicast nebyl testován,
+  - v příkazové řádce nelze zadat adresar nebo soubor obsahující mezery.

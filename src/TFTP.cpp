@@ -113,6 +113,10 @@ negotiation_t parse_OACK(char *buffer, ssize_t size, bool blksize, bool timeout,
         if (option == BLKSIZE && blksize)
         {
             negotiation.block_size = stoi(value);
+            if (negotiation.block_size < MIN_BLK_SIZE)
+            {
+                throw exception();    
+            }
         }
         else if (option == TIMEOUT && timeout)
         {
@@ -146,10 +150,15 @@ negotiation_t parse_OACK(char *buffer, ssize_t size, bool blksize, bool timeout,
                 {
                     negotiation.address.IPv4.sin_family = AF_INET;
                 }
-
             }
             else
             {
+                if (value.size() == 0)
+                {
+                    done++;
+                    negotiation.multicast = false;
+                    continue;
+                }
                 // adresa nelze ziskat
                 throw exception();
             }

@@ -108,6 +108,7 @@ void transfer(const arguments_t &arguments)
 
 transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_length, transfer_data_t data)
 {
+    int recv_sock_fd = socket_fd;
     uint8_t retries = 0; // pocet pokusu znovu odeslani ztraceneho datagramu
     in_port_t TID = 0; // TID serveru
     // inicializace podminek prenosu
@@ -166,10 +167,9 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
         }
     // snaha o navazani komuniakce se serverem    
     }
-    while ((size = recvfrom(socket_fd, buffer, TFTP_DATAGRAM_SIZE, 0, address, &addr_length)) == -1 || // recv selhala
+    while ((size = recvfrom(recv_sock_fd, buffer, TFTP_DATAGRAM_SIZE, 0, address, &addr_length)) == -1 || // recv selhala
            (*opcode == DATA && ntohs(*block_number) != 1)); // prichozi datagram je nespravny
     retries = 0;
-
     // ziskani TID serveru 
     TID = ((sockaddr_in *)address)->sin_port;
 
@@ -181,7 +181,7 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
     if (*opcode == OACK)
     {
         // ziskani podminek prenosu odsouhlasenych serverem
-        if (set_negotioation(socket_fd, buffer, size, data))
+        if (set_negotioation(recv_sock_fd, buffer, size, data))
         {
             sendto(socket_fd, buffer, size, 0, address, addr_length);
             size = data.block_size;
@@ -222,7 +222,7 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
                     }
                 }
             }
-            while ((size = recvfrom(socket_fd, buffer, data.block_size + TFTP_HDR, 0, ptr_recieved_address, &addr_length)) == -1 || // recv neselhal
+            while ((size = recvfrom(recv_sock_fd, buffer, data.block_size + TFTP_HDR, 0, ptr_recieved_address, &addr_length)) == -1 || // recv neselhal
                    (((sockaddr_in6 *)ptr_recieved_address)->sin6_port == TID && ntohs(*block_number) != 1 && *opcode == DATA)); // prichozi datagram je nespravny
 
             if (((sockaddr_in6 *)address)->sin6_port != TID) // spatne TID
@@ -244,7 +244,7 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
     
     if (*opcode == DATA && ack_number != 0) // server nerozumi specifikaci podminek prenosu, ack_number zustalo nastaveno
     {
-        cerr << "Warning: Server does not support Option Negotiation." << endl;
+        cerr << "Warning: Server does not support Option Negotiation, transfer continues with default values." << endl;
         data.block_size = TFTP_DATA_SIZE;
     }
     else if (*opcode == DATA) // OACK prislo
@@ -267,7 +267,7 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
 
     size -= TFTP_HDR;
     // dokud neni prijat posledni blok souboru
-    while (size == data.block_size)
+    while (true)
     {
         if (data.mode == BINARY) // binarni prenos
         {
@@ -283,6 +283,11 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
                 sendto(socket_fd, ack_buff, size, 0, address, addr_length);
                 goto cleanup;
             }
+        }
+
+        if (size != data.block_size) // posledni blok souboru
+        {
+            break;
         }
     
         size = -1;  // indikuje 1. cteni daneho bloku 
@@ -311,7 +316,7 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
                     }     
                 }
             } 
-            while ((size = recvfrom(socket_fd, buffer, data.block_size + TFTP_HDR, 0, address, &addr_length)) == -1 || // recv neselhal
+            while ((size = recvfrom(recv_sock_fd, buffer, data.block_size + TFTP_HDR, 0, address, &addr_length)) == -1 || // recv neselhal
                    (((sockaddr_in6 *)address)->sin6_port == TID && ntohs(*block_number) != ntohs(ack_number) + 1 && *opcode == DATA)); // ziskany datagram je nespravny
             
             if (((sockaddr_in6 *)address)->sin6_port != TID) // spatne TID
@@ -358,6 +363,10 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
 
 // uvolneni zdroju
 cleanup:
+    if (recv_sock_fd != socket_fd)
+    {   
+        close(recv_sock_fd);
+    }
     fclose(file);
 data_cleanup:
     delete[] buffer;
@@ -373,7 +382,7 @@ transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t addr
 {
     uint8_t retries = 0;  // pocet pokusu o znovuodeslani ztraceneho datagramu
     in_port_t TID = 0;    // TID serveru
-    uint16_t port = ((sockaddr_in *)address)->sin_port;
+    uint16_t port = ((sockaddr_in *)address)->sin_port; // zapamatovani portu pro mozny reset
     // inicializace podminek prenosu
     TFTP_options_t options = { .file_URL = data.file_URL, .opcode = WRQ, .mode = data.mode, .block_size = data.block_size, 
                                .transfer_size = 0, .timeout = data.timeout, .multicast = data.multicast };
@@ -426,7 +435,6 @@ transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t addr
         RQ_header(ack_buff, size, options);
         if (sendto(socket_fd, ack_buff, size, 0, address, addr_length) != size)
         {
-            cerr << strerror(errno) << endl;
             cerr << "Error: Transfer of data failed. Data could not be send fully." << endl;
             ERR_packet(buffer, size, NOT_DEFINED, "Data could not be send fully.");
             sendto(socket_fd, buffer, size, 0, address, addr_length);
@@ -454,7 +462,7 @@ transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t addr
     }
     else if (*ack_opcode == ACK) // server nepodporuje option negotiation
     {
-        cerr << "Warning: Server does not support Option Negotiation." << endl;
+        cerr << "Warning: Server does not support Option Negotiation, transfer continues with default values." << endl;
         data.block_size = TFTP_DATA_SIZE;
     }
     else if (*ack_opcode == ERR) // znama chyba
@@ -705,7 +713,7 @@ bool set_negotioation(int &socket_fd, char *buffer, ssize_t &size, transfer_data
         // parsovani odpovedi serveru
         negotiation = parse_OACK(buffer, size, data.block_size != TFTP_DATA_SIZE, data.timeout != 0, data.mode == BINARY, data.multicast);
     }
-    catch(const std::exception& e)
+    catch(const std::exception& e) // podminky se nepodarilo prevest na cisla, nebo jina chyba
     {
         cerr << "Error: Could not parse Option Negotiation datagram, unknown or unspecified option recieved." << endl;
         ERR_packet(buffer, size, BAD_OACK, "Could no parse OACK datagram.");
@@ -737,20 +745,6 @@ bool set_negotioation(int &socket_fd, char *buffer, ssize_t &size, transfer_data
         }
     }
 
-    if (data.timeout != 0) // byl specifikovan parametr -t
-    {
-        if (negotiation.timeout == 0) // server neodpovedel na timeout 
-        {
-            cerr << "Warning: Server did not recognize timeout option. Client timeout remains at " << (uint)data.timeout << " s." << endl;
-        }
-        else if (data.timeout != 0 && negotiation.timeout != data.timeout) // server odpovedel jinou hodnotou timeout
-        {
-            set_timeout(socket_fd, negotiation.timeout); // akceptace timeout specifikovaneho serverem
-            cerr << "Warning: Server did not accept specified timeout of " << (uint)data.timeout 
-                << " s. Timeout specified by server of " << (uint)negotiation.timeout <<" s is used instead." << endl;
-        }
-    }
-
     if (data.mode == BINARY) // byla zaslana option tsize
     {
         if (negotiation.transfer_size == -1) // server neodpovedel na velikost souboru
@@ -765,10 +759,9 @@ bool set_negotioation(int &socket_fd, char *buffer, ssize_t &size, transfer_data
         }
     }
 
-    if (data.multicast && negotiation.multicast) // byl specifikovan parametr -m
+    if (data.multicast && negotiation.multicast) // byl specifikovan parametr -m a server podporuje multicast
     {
         uint32_t reuse = 1;
-        close(socket_fd); // zavreni dosud pouzivaneho socketu
         if (negotiation.address.IPv4.sin_family == AF_INET)
         {
             // adresa multicastove skupiny
@@ -845,10 +838,26 @@ bool set_negotioation(int &socket_fd, char *buffer, ssize_t &size, transfer_data
                 return true;
             }
         }
+
+        set_timeout(socket_fd, data.timeout); // nastaveni timeout pro nove vytvoreny multicast soket
     }
-    else if (data.multicast)
+    else if (data.multicast) // server nepodopruje multicast
     {
         cerr << "Warning: Server did not recognize multicast option. Transfer continues via unicast." << endl;        
+    }
+
+    if (data.timeout != 0) // byl specifikovan parametr -t
+    {
+        if (negotiation.timeout == 0) // server neodpovedel na timeout 
+        {
+            cerr << "Warning: Server did not recognize timeout option. Client timeout remains at " << (uint)data.timeout << " s." << endl;
+        }
+        else if (data.timeout != 0 && negotiation.timeout != data.timeout) // server odpovedel jinou hodnotou timeout
+        {
+            set_timeout(socket_fd, negotiation.timeout); // akceptace timeout specifikovaneho serverem
+            cerr << "Warning: Server did not accept specified timeout of " << (uint)data.timeout 
+                << " s. Timeout specified by server of " << (uint)negotiation.timeout <<" s is used instead." << endl;
+        }
     }
 
     return false;
