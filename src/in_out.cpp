@@ -63,7 +63,7 @@ int parse_line(const string &line, arguments_t &arguments)
     {
         if (word == "-R") // cteni
         {
-            if (mode)
+            if (mode) // -W a -R zadan soucasne
             {
                 cerr << "Error: Mode of file transfer specified more than once. Type '?' or 'h' for help." << endl;
                 return 0;
@@ -73,7 +73,7 @@ int parse_line(const string &line, arguments_t &arguments)
         }
         else if (word == "-W") // zapis
         {
-            if (mode)
+            if (mode) // -W a -R zadan soucasne
             {
                 cerr << "Error: Mode of file transfer specified more than once. Type '?' or 'h' for help." << endl;
                 return 0;
@@ -88,7 +88,7 @@ int parse_line(const string &line, arguments_t &arguments)
                 cerr << "Error: -d option requires a parameter. Type '?' or 'h' for help." << endl;
                 return 0;
             }
-            if (arguments.file_URL.size() > MAX_URL_LEN) // buffer overflow may occure (buffer size is 1024 B)
+            if (arguments.file_URL.size() > MAX_URL_LEN) // zadana cesta a jmeno souboru je prilis dlouha
             {
                 cerr << "Error: lenght of the file URL cannot be larger than 512 characters. Type '?' or 'h' for help." << endl;
                 return 0;
@@ -258,19 +258,19 @@ int parse_line(const string &line, arguments_t &arguments)
         }
     }
 
-    if (!mode) // chyby READ nebo WRITE - typ prenosu
+    if (!mode) // chybi READ nebo WRITE - typ prenosu
     {
         cerr << "Error: Mode of file transfer not specified. Type '?' or 'h' for help." << endl;
         return 0;
     }
 
-    if (arguments.file_URL.empty()) // chyby jmeno souboru
+    if (arguments.file_URL.empty()) // chybi jmeno souboru
     {
         cerr << "Error: Transported file not specified. Type '?' or 'h' for help." << endl;
         return 0;
     }
 
-    if (arguments.address_type == UNSET) // nastaveni defaultno adresy, pokud zadna nebyla zadana
+    if (arguments.address_type == UNSET) // nastaveni defaultni adresy, pokud zadna nebyla zadana
     {
         arguments.address_type = IPv4;
         inet_pton(AF_INET, "127.0.0.1", &arguments.address.ipv4);
@@ -279,7 +279,7 @@ int parse_line(const string &line, arguments_t &arguments)
 
     arguments.multicast = arguments.multicast && arguments.transfer_mode == READ;
 
-    return 1;
+    return 1; // prenos lze uskutecnit
 }
 
 string get_file_name(const string &file_URL)
@@ -311,28 +311,28 @@ ssize_t fread_to_netascii(FILE *file, ssize_t block_size, char *buffer)
     static int last = -1;
     ssize_t i = 0;
     int c = 0;
-    if (last != -1)
+    if (last != -1) // pri poslednim volani funkce doslo k preteceni bufferu
     {
         buffer[i++] = last;
     }
     
     for (; i < block_size && (c = fgetc(file)) != EOF; i++)
     {
-        if (c == LF)
+        if (c == LF) // LF musi predchazet CR
         {
             buffer[i++] = CR;
-            if (i == block_size)
+            if (i == block_size) // preteceni
             {
                 last = LF;
                 return i;
             }
         }
 
-        if (c == CR)
+        if (c == CR) // CR musi nasledovat '\0'
         {
             c = '\0';
             buffer[i++] = CR;
-            if (i == block_size)
+            if (i == block_size) // preteceni
             {
                 last = c;
                 return i;
@@ -342,34 +342,39 @@ ssize_t fread_to_netascii(FILE *file, ssize_t block_size, char *buffer)
         buffer[i] = c;
     }
     
-    last = -1;
+    last = -1; // nedoslo k preteceni
     return i;
 }
 
-bool fwrite_from_netascii(FILE *file, ssize_t size, char *buffer)
+bool fwrite_from_netascii(FILE *file, ssize_t size, ssize_t block_size, char *buffer)
 {
     static int last = -1;
     for (ssize_t i = 0; i < size; i++)
     {
-        if (buffer[i] == CR)
+        if (buffer[i] == CR) // interpretace zalezi na nasledujcim znaku
         {
             last = CR;
+            if (i + 1 == size && size != block_size) // CR je jako posledni znak souboru
+            {
+                last = -1;
+                return true; // chyba, CR musi byt vzdy nasledovane '\0' nebo LF
+            }
             continue;
         }
 
-        if (last == CR)
+        if (last == CR) // posledni precteny znak byl CR
         {
-            if (buffer[i] == LF)
+            if (buffer[i] == LF) // aktulani LF tzn. prevod CRLF na LF
             {
                 putc('\n', file);
             }
-            else if (buffer[i] == '\0')
+            else if (buffer[i] == '\0') // aktualni '\0' tzn. prevod CR'\0' na CR
             {
                 putc(CR, file);
             }
             else
             {
-                return true;
+                return true; // chybne poziti CR
             }
         }
         else

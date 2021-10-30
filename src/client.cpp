@@ -14,9 +14,11 @@ void transfer(const arguments_t &arguments)
 {
     // ziskani casu zacatku prenosu
     system_clock::time_point start = high_resolution_clock::now();
+    // adresove struktury pro vytvoreni soketu a odesilani zprav
     struct sockaddr_in server_v4;
     struct sockaddr_in6 server_v6;
     struct sockaddr *destination = nullptr;
+
     socklen_t destination_len = 0;
     int socket_fd = 0;
     int32_t mtu = arguments.block_size;
@@ -110,7 +112,7 @@ void transfer(const arguments_t &arguments)
 
 transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_length, transfer_data_t data)
 {
-    int recv_sock_fd = socket_fd;
+    int recv_sock_fd = socket_fd; // duplikace soketu s moznou nahradou recv_sock_fd za multicastovy soket
     uint8_t retries = 0; // pocet pokusu znovu odeslani ztraceneho datagramu
     in_port_t TID = 0; // TID serveru
     // inicializace podminek prenosu
@@ -130,10 +132,8 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
     char ack_buff[ACK_BUFFER_SIZE] = {0, };
 
     ssize_t size = 0;
+    // ulozeni puvodniho portu pro reset
     uint16_t port = ((sockaddr_in6 *)address)->sin6_port;
-    struct sockaddr_in6 tmp_address;
-    memcpy(&tmp_address, address, addr_length);
-    struct sockaddr *ptr_tmp_address = (struct sockaddr *) &tmp_address;
     
     // zisakni aktualniho casu
     time_t curr_time = system_clock::to_time_t(system_clock::now());
@@ -161,6 +161,7 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
             goto cleanup;
         }
 
+        // zaslani read request
         RQ_header(ack_buff, size, options);
         if (sendto(socket_fd, ack_buff, size, 0, address, addr_length) != size)
         {
@@ -194,7 +195,7 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
             goto cleanup;
         }
 
-        // resetovani odrzenych dat
+        // resetovani obdrzenych dat
         ack_number = 0; // indikuje prichod OACK
         summary.datagram_count = 0;
         summary.lost_count = 0;
@@ -216,8 +217,8 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
                         goto cleanup;
                     }
 
-                    ACK_header(buffer, size, 0);
                     // odeslani ACK na OACK
+                    ACK_header(buffer, size, 0);
                     if (sendto(socket_fd, buffer, size, 0, address, addr_length) != size)
                     {
                         cerr << "Error: Transfer of data failed. Data could not be send fully." << endl;
@@ -227,14 +228,15 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
                     }
                 }
             }
-            while ((size = recvfrom(recv_sock_fd, buffer, data.block_size + TFTP_HDR, 0, ptr_tmp_address, &addr_length)) == -1 || // recv neselhal
-                   (((sockaddr_in6 *)ptr_tmp_address)->sin6_port == TID && ntohs(*block_number) != 1 && *opcode == DATA)); // prichozi datagram je nespravny
+            while ((size = recvfrom(recv_sock_fd, buffer, data.block_size + TFTP_HDR, 0, address, &addr_length)) == -1 || // recv neselhal
+                   (((sockaddr_in6 *)address)->sin6_port == TID && ntohs(*block_number) != 1 && *opcode == DATA)); // prichozi datagram je nespravny
 
             if (((sockaddr_in6 *)address)->sin6_port != TID) // spatne TID
             {
                 cerr << "Warning: Recieved TID does not match the estabhlished one, server informed and transfer continues." << endl;
                 ERR_packet(ack_buff, size, UNKNOWN_ID, "Incorrect TID.");
                 sendto(socket_fd, ack_buff, size, 0, address, addr_length);
+                ((sockaddr_in6 *)address)->sin6_port = TID; // reset portu
                 retries--;
                 // prenos pokracuje
                 continue;
@@ -281,7 +283,7 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
         else // prenos pomoci netascii
         {
             // parsovani netascii 
-            if (fwrite_from_netascii(file, size, &buffer[TFTP_HDR]))
+            if (fwrite_from_netascii(file, size, data.block_size, &buffer[TFTP_HDR]))
             {
                 cerr << "Error: Malformed packet recieved." << endl;
                 ERR_packet(ack_buff, size, NOT_DEFINED, "Malformed packet.");
@@ -330,6 +332,8 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
                 cerr << "Warning: Recieved TID does not match the estabhlished one, server informed and transfer continues." << endl;
                 ERR_packet(ack_buff, size, UNKNOWN_ID, "Incorrect TID.");
                 sendto(socket_fd, ack_buff, size, 0, address, addr_length);
+                ((sockaddr_in6 *)address)->sin6_port = TID; // reset portu
+                retries--;
                 // prenos pokracuje
                 continue;
             }
@@ -522,6 +526,7 @@ transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t addr
                         goto cleanup;
                     }
 
+                    // odeslani datagramu s daty
                     if (sendto(socket_fd, buffer, size + TFTP_HDR, 0, address, addr_length) != size + TFTP_HDR)
                     {
                         cerr << "Error: Transfer of data failed. Data could not be send fully." << endl;
@@ -534,13 +539,14 @@ transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t addr
                 }
             }
             while ((err_size = recvfrom(socket_fd, ack_buff, ACK_BUFFER_SIZE, 0, address, &addr_length)) == -1 ||  // recv je neuspesna
-                   (((sockaddr_in *)address)->sin_port == TID && *ack_block_number != *block_number && *ack_opcode == ACK)); // prijaty datagram neni spravny
+                   (((sockaddr_in6 *)address)->sin6_port == TID && *ack_block_number != *block_number && *ack_opcode == ACK)); // prijaty datagram neni spravny
             
-            if (((sockaddr_in *)address)->sin_port != TID)
+            if (((sockaddr_in6 *)address)->sin6_port != TID) // nespravny TID
             {
                 cerr << "Warning: Recieved TID does not match the estabhlished one, server informed and transfer continues." << endl;
                 ERR_packet(ack_buff, err_size, UNKNOWN_ID, "Incorrect TID.");
                 sendto(socket_fd, ack_buff, err_size, 0, address, addr_length);
+                ((sockaddr_in6 *)address)->sin6_port = TID; // reset portu
                 retries--;
                 continue;
             }

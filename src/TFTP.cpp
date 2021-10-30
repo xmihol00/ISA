@@ -61,6 +61,7 @@ void RQ_header(char *buffer, ssize_t &size, TFTP_options_t options)
         size += value.size() + 1;
     }
 
+    // nastaveni multicast, pokud jej uzivatel zadal a jedna se o cteni souboru
     if (options.multicast && options.opcode == RRQ)
     {
         strcpy(&buffer[size], MULTICAST);
@@ -123,7 +124,7 @@ negotiation_t parse_OACK(char *buffer, ssize_t size, bool blksize, bool timeout,
             size_t res = stoul(value);
             if (res > UINT8_MAX)
             {
-                // timeout out of range
+                // timeout je out of range
                 throw exception();    
             }
             negotiation.timeout = res;
@@ -135,13 +136,15 @@ negotiation_t parse_OACK(char *buffer, ssize_t size, bool blksize, bool timeout,
         else if (option == MULTICAST && multicast)
         {
             size_t pos = value.find(',');
-            if (pos != string::npos)
+            if (pos != string::npos) // multicast obsahuje adresu
             {
-                value[pos] = '\0';
+                value[pos] = '\0'; // rozdeleni retezce na pozici ','
+                // parsovani IP adresy
                 if (!inet_pton(AF_INET, value.c_str(), &negotiation.address.IPv4.sin_addr))
                 {
                     if (!inet_pton(AF_INET6, value.c_str(), &negotiation.address.IPv6.sin6_addr))
                     {
+                        // adresa neni v IPv4 ani v IPv6 formatu
                         throw exception();
                     }
                     negotiation.address.IPv6.sin6_family = AF_INET6;
@@ -151,21 +154,22 @@ negotiation_t parse_OACK(char *buffer, ssize_t size, bool blksize, bool timeout,
                     negotiation.address.IPv4.sin_family = AF_INET;
                 }
             }
-            else
+            else // multicast neobsahuje adresu
             {
-                if (value.size() == 0)
+                if (value.size() == 0) // ale hodnota je 0, pak server neprijma multicast
                 {
                     done++;
-                    negotiation.multicast = false;
+                    negotiation.multicast = false; // pokracuje se unicastem
                     continue;
                 }
+
                 // adresa nelze ziskat
                 throw exception();
             }
 
             value = value.substr(pos + 1);
             pos = value.find(',');
-            if (pos != string::npos)
+            if (pos != string::npos) // multicast obsahuje port
             {
                 value[pos] = '\0';
                 unsigned long port = stoul(value);

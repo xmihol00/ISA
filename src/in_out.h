@@ -122,10 +122,11 @@ ssize_t fread_to_netascii(FILE *file, ssize_t block_size, char *buffer);
  * @brief Zapise znaky z bufferu do souboru a konvertuje je z netascii na radky zakoncene LF.
  * @param file vystupni soubor.
  * @param size velikost dat v bufferu.
+ * @param block_size maximalni zapsana velikost.
  * @param buffer obsahuje data.
  * @return flase pri uspechu, jinak true.
  */
-bool fwrite_from_netascii(FILE *file, ssize_t size, char *buffer);
+bool fwrite_from_netascii(FILE *file, ssize_t size, ssize_t block_size, char *buffer);
 
 /**
  * @brief Vytiskne shrnuti prenosu souboru.

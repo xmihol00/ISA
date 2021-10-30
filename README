@@ -9,11 +9,11 @@
 
 Adresářová a souborová struktura projektu:
 --|
-  |-- build/        - adresář vygenerována po spustění příkazu make obsahující *.o a *.d soubory
+  |-- build/        - adresář vygenerován po spustění příkazu make obsahující *.o a *.d soubory
   |
   |-- src/          - adresář obsahující *.cpp a *.h s implmentací TFTPv2 klienta a Makefie
   |
-  |-- tests/        - adresář obsahuje soubory a skripty použité pro testování
+  |-- tests/        - adresář obsahující soubory a skripty použité pro testování
   |
   |-- Makefile      - slouží ke spuštění Makefile v adresáři src
   |
@@ -92,13 +92,13 @@ Příklady použití a výpisu programu:
 
 Detaily implementace:
   Časový limit (parametr -t)
-    V případě, že uživatel časový limit nespecifikuje, je nastaven na 1s. Pokud jej uživatel specifikuje a server nepodporuje 
-    sjednávaní podmínek přenosu nebo tuto podmínku neimplementuje, zůstává časový limit na specifikované hodnotě uživatelem. 
-    Tímto způsobem může uživatel u serverů nepodporujících sjednávání podmínek přenosu ovlivnit ukončení přenosu v případech 
-    extrémně pomalého připojení, viz následující text. Pokud server na podmínku odpoví s jinou hodnotou, než specifikoval klient, 
-    pak je použita tato hodnota, i když to dle RFC 2349 není možné. V obou případech je o této skutečnosti uživatel informován 
-    výpisem. Ve všech případech je odesláno maximálně 5 stejných datagramů, pokud na žádný z nich není přijata relevantní odpověď, 
-    je usouzeno, že došlo k fatální chybě a přenos je přerušen.
+    V případě, že uživatel časový limit nespecifikuje, je na straně klienta nastaven na 1s. Pokud jej uživatel specifikuje 
+    a server nepodporuje sjednávaní podmínek přenosu nebo tuto podmínku neimplementuje, zůstává časový limit na specifikované 
+    hodnotě uživatelem. Tímto způsobem může uživatel u serverů nepodporujících sjednávání podmínek přenosu ovlivnit ukončení 
+    přenosu v případech extrémně pomalého připojení, viz následující text. Pokud server na podmínku odpoví s jinou hodnotou, 
+    než specifikoval klient, pak je použita tato hodnota, i když to dle RFC 2349 není možné. V obou případech je o této 
+    skutečnosti uživatel informován výpisem. Ve všech případech je odesláno maximálně 5 stejných datagramů, pokud na žádný 
+    z nich není přijata relevantní odpověď, je usouzeno, že došlo k fatální chybě a přenos je přerušen.
 
   Velikost přenášeného bloku dat (parametr -s)
     Pokud server nepodporuje sjednávaní podmínek přenosu nebo tuto podmínku neimplementuje, je velikost přenášeného bloku dat 
@@ -113,4 +113,4 @@ Detaily implementace:
 
 Nedostatky implementace:
   - IPv6 multicast nebyl testován,
-  - v příkazové řádce nelze zadat adresar nebo soubor obsahující mezery.
+  - v příkazové řádce nelze zadat adresář nebo soubor obsahující mezery.
