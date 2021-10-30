@@ -1,7 +1,7 @@
 //====================================================================================================================
 // Soubor:      README
 // Projekt:     VUT, FIT, ISA, TFTPv2 klient
-// Datum:       24. 10. 2021
+// Datum:       30. 10. 2021
 // Autor:       David Mihola
 // Kontakt:     xmihol00@stud.fit.vutbr.cz
 // Popis:       README soubor se strukturou projektu, navodem pouziti a detaily implementace.
@@ -24,6 +24,12 @@ Adresářová a souborová struktura projektu:
   |-- README
 
 
+Příklady sestavení a spuštění programu:
+  - sestavení: make
+  - sestavení a spuštení: make run
+  - spuštění: ./mytftpclient
+ 
+
 Použití příkazové řádky:
   -R                               : Povinný, nelze kombinovat s parametrem '-W'. Specifikuje čtení souboru ze serveru.
   -W                               : Povinný, nelze kombinovat s parametrem '-R'. Specifikuje zápis souboru na serveru.
@@ -40,50 +46,49 @@ Použití příkazové řádky:
   <?|h>                            : Vypíše zprávu s nápovědou.
 
 
-Příklady spuštění a výpisu programu:
+Příklady použití a výpisu programu:
   > -W -d file
-  Writing file 'file' ...
+  Sat Oct 30 13:54:00 2021
+  Writing file 'file' to 127.0.0.1 ...
   
+  Sat Oct 30 13:54:00 2021
   Writing file 'file' succeeded.
   Transfer summary:
-     - 1 ms elapsed during the transfer,
-     - 1024 B of data were sent in 3 datagrams of a maximum data size 512 B.
+     - 53 ms elapsed during the transfer,
+     - 1039 B of data were sent in 3 datagrams of a maximum data size 512 B.
 
   > -W -d tests/hi -a 192.168.1.147,69 -s 25 -c ascii
-  Writing file 'hi' ...
+  Sat Oct 30 13:57:24 2021
+  Writing file 'hi' to 192.168.1.147 ...
 
+  Sat Oct 30 13:57:24 2021
   Writing file 'hi' succeeded.
   Transfer summary:
-     - 0 ms elapsed during the transfer,
+     - 2 ms elapsed during the transfer,
      - 4 B of data were sent in 1 datagram of a maximum data size 25 B.
   
   > -m -c octet -t 5 -d tests/hi -R
-  Reading file 'hi' ...
+  Sat Oct 30 13:56:15 2021
+  Reading file 'hi' from 127.0.0.1 ...
 
+  Sat Oct 30 13:56:15 2021
   Reading file 'hi' succeeded.
   Transfer summary:
-     - 0 ms elapsed during the transfer,
+     - 14 ms elapsed during the transfer,
      - 3 B of data were recieved in 1 datagram of a maximum data size 512 B.
 
-  > -s 85269 -a :: , 69 -d tests/hello -R  
+  > -s 85269 -a :: , 69 -d tests/hello -R 
   Warning: Specified block size exceeds minimum MTU of size 1448, which is used instead.
-  Reading file 'hello' ...
+  Sat Oct 30 13:58:33 2021
+  Reading file 'hello' from :: ...
   Error: Transfer of data failed. Server timed out.
 
+  Sat Oct 30 13:58:39 2021
   Reading file 'hello' failed.
   Transfer summary:
      - 6124 ms elapsed before failure,
      - 0 B including potential errror message recieved before failure occured in 0 datagrams of a maximum data size 512 B.
   
-  > -m -c ascii -s 10 -t 5 -d tests/hi -R
-  Reading file 'hi' ...
-  Error: Transfer of data failed. Server timed out.
-
-  Reading file 'hi' failed.
-  Transfer summary:
-     - 30798 ms elapsed before failure,
-     - 0 B including potential errror message recieved before failure occured in 0 datagrams of a maximum data size 512 B.
-
 
 Detaily implementace:
   Časový limit (parametr -t)

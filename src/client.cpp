@@ -1,7 +1,7 @@
 //====================================================================================================================
 // Soubor:      client.cpp
 // Projekt:     VUT, FIT, ISA, TFTPv2 klient
-// Datum:       24. 10. 2021
+// Datum:       30. 10. 2021
 // Autor:       David Mihola
 // Kontakt:     xmihol00@stud.fit.vutbr.cz
 // Kompilovano: gcc version 9.3.0 (Ubuntu 9.3.0-17ubuntu1~20.04)
@@ -30,7 +30,7 @@ void transfer(const arguments_t &arguments)
         server_v4.sin_family = AF_INET;
         server_v4.sin_port = arguments.port;
         destination = (struct sockaddr *)&server_v4;
-        socket_fd = socket(AF_INET , SOCK_DGRAM , 0);
+        socket_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     }
     else
     {
@@ -40,7 +40,7 @@ void transfer(const arguments_t &arguments)
         server_v6.sin6_family = AF_INET6;
         server_v6.sin6_port = arguments.port;
         destination = (struct sockaddr *)&server_v6;
-        socket_fd = socket(AF_INET6 , SOCK_DGRAM , 0);
+        socket_fd = socket(AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
     }
     if (socket_fd == -1) // otevreni socketu selhalo
     {
@@ -92,11 +92,13 @@ void transfer(const arguments_t &arguments)
     // cteni nebo zapis souboru
     if (arguments.transfer_mode == READ)
     {
-        summary = read(socket_fd, destination, destination_len, {arguments.file_URL, arguments.data_mode, mtu, arguments.multicast, arguments.timeout});
+        summary = read(socket_fd, destination, destination_len, 
+                      { arguments.file_URL, arguments.data_mode, mtu, arguments.multicast, arguments.timeout, arguments.address_str });
     }
     else
     {
-        summary = write(socket_fd, destination, destination_len, {arguments.file_URL, arguments.data_mode, mtu, arguments.multicast, arguments.timeout});
+        summary = write(socket_fd, destination, destination_len, 
+                        { arguments.file_URL, arguments.data_mode, mtu, arguments.multicast, arguments.timeout, arguments.address_str });
     }
 
     close(socket_fd);
@@ -118,7 +120,6 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
     transfer_summary_t summary = { .success = false, .file = get_file_name(data.file_URL), .mode = READ, .blksize = TFTP_DATA_SIZE, 
                                    .datagram_count = 0, .data_size = 0, .lost_count = 0, .lost_size = 0 };
     
-
     // buffer pro prijem dat
     char *buffer = new char[(data.block_size > TFTP_DATA_SIZE ? data.block_size + TFTP_HDR : TFTP_DATAGRAM_SIZE) + PADDING]();
     uint16_t *opcode = (uint16_t *)buffer;
@@ -130,17 +131,20 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
 
     ssize_t size = 0;
     uint16_t port = ((sockaddr_in6 *)address)->sin6_port;
-    struct sockaddr_in6 recieved_address;
-    memcpy(&recieved_address, address, addr_length);
-    struct sockaddr *ptr_recieved_address = (struct sockaddr *) &recieved_address;
+    struct sockaddr_in6 tmp_address;
+    memcpy(&tmp_address, address, addr_length);
+    struct sockaddr *ptr_tmp_address = (struct sockaddr *) &tmp_address;
     
+    // zisakni aktualniho casu
+    time_t curr_time = system_clock::to_time_t(system_clock::now());
+
     FILE *file = fopen(summary.file.c_str(), "w");
     if (file == nullptr)
     {
         cerr << "Error: Could not open file '" << summary.file << "' for writing." << endl;
         goto data_cleanup;
     }
-    cout << "Reading file '" << summary.file << "' ..." << endl;
+    cout << ctime(&curr_time) << "Reading file '" << summary.file << "' from " << data.address_str << " ..." << endl;
 
     do
     {
@@ -169,6 +173,7 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
     }
     while ((size = recvfrom(recv_sock_fd, buffer, TFTP_DATAGRAM_SIZE, 0, address, &addr_length)) == -1 || // recv selhala
            (*opcode == DATA && ntohs(*block_number) != 1)); // prichozi datagram je nespravny
+    
     retries = 0;
     // ziskani TID serveru 
     TID = ((sockaddr_in *)address)->sin_port;
@@ -222,8 +227,8 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
                     }
                 }
             }
-            while ((size = recvfrom(recv_sock_fd, buffer, data.block_size + TFTP_HDR, 0, ptr_recieved_address, &addr_length)) == -1 || // recv neselhal
-                   (((sockaddr_in6 *)ptr_recieved_address)->sin6_port == TID && ntohs(*block_number) != 1 && *opcode == DATA)); // prichozi datagram je nespravny
+            while ((size = recvfrom(recv_sock_fd, buffer, data.block_size + TFTP_HDR, 0, ptr_tmp_address, &addr_length)) == -1 || // recv neselhal
+                   (((sockaddr_in6 *)ptr_tmp_address)->sin6_port == TID && ntohs(*block_number) != 1 && *opcode == DATA)); // prichozi datagram je nespravny
 
             if (((sockaddr_in6 *)address)->sin6_port != TID) // spatne TID
             {
@@ -317,7 +322,8 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
                 }
             } 
             while ((size = recvfrom(recv_sock_fd, buffer, data.block_size + TFTP_HDR, 0, address, &addr_length)) == -1 || // recv neselhal
-                   (((sockaddr_in6 *)address)->sin6_port == TID && ntohs(*block_number) != ntohs(ack_number) + 1 && *opcode == DATA)); // ziskany datagram je nespravny
+                   (((sockaddr_in6 *)address)->sin6_port == TID && ntohs(*block_number) != uint16_t(ntohs(ack_number) + 1) && 
+                   *opcode == DATA)); // ziskany datagram je nespravny
             
             if (((sockaddr_in6 *)address)->sin6_port != TID) // spatne TID
             {
@@ -404,6 +410,9 @@ transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t addr
     ssize_t size = 0;
     ssize_t err_size = ACK_BUFFER_SIZE;
 
+    // zisakni aktualniho casu
+    time_t curr_time = system_clock::to_time_t(system_clock::now());
+
     FILE *file = fopen(data.file_URL.c_str(), "r");
     if (file == nullptr)
     {
@@ -420,7 +429,7 @@ transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t addr
     }
 
     // zacatek zapisu dat na server
-    cout << "Writing file '" << summary.file << "' ..." << endl;
+    cout << ctime(&curr_time) << "Writing file '" << summary.file << "' to " << data.address_str << " ..." << endl;
     do // kontaktovani serveru
     {
         // nastaveni defaultniho TID serveru (69 nebo specifikovano uzivatelelem)

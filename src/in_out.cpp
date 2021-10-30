@@ -1,7 +1,7 @@
 //====================================================================================================================
 // Soubor:      in_out.cpp
 // Projekt:     VUT, FIT, ISA, TFTPv2 klient
-// Datum:       24. 10. 2021
+// Datum:       30. 10. 2021
 // Autor:       David Mihola
 // Kontakt:     xmihol00@stud.fit.vutbr.cz
 // Kompilovano: gcc version 9.3.0 (Ubuntu 9.3.0-17ubuntu1~20.04)
@@ -221,6 +221,9 @@ int parse_line(const string &line, arguments_t &arguments)
             }
             // prevod portu na spravny endian
             arguments.port = (in_port_t)htons(converter); 
+
+            //ulozeni adresy pro pozdejsi uzivatelsky vypis
+            arguments.address_str = address;
         }
         else if (word == "-c") // typ kodovani prenasenych dat
         {
@@ -271,6 +274,7 @@ int parse_line(const string &line, arguments_t &arguments)
     {
         arguments.address_type = IPv4;
         inet_pton(AF_INET, "127.0.0.1", &arguments.address.ipv4);
+        arguments.address_str = "127.0.0.1";
     }
 
     arguments.multicast = arguments.multicast && arguments.transfer_mode == READ;
@@ -381,7 +385,11 @@ bool fwrite_from_netascii(FILE *file, ssize_t size, char *buffer)
 
 void print_summary(const transfer_summary_t &summary, system_clock::time_point start, system_clock::time_point end)
 {
+    // zisakni aktualniho casu
+    time_t curr_time = system_clock::to_time_t(system_clock::now());
+
     cout << endl;
+    cout << ctime(&curr_time);
     if (summary.success) // prevod souboru uspesny
     {
         if (summary.mode == READ) // cteni
