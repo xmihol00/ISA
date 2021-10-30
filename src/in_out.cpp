@@ -103,7 +103,7 @@ int parse_line(const string &line, arguments_t &arguments)
             }
             // prevod na cislo a kontrola rozsahu
             converter = strtol(word.c_str(), &endptr, 10);
-            if (converter < 0L || converter > 255L)
+            if (converter < 1L || converter > 255L)
             {
                 cerr << "Error: Timeout out of range. Type '?' or 'h' for help." << endl;
                 return 0;
