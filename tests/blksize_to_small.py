@@ -18,5 +18,5 @@ while True:
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind((DST_IP, RAND_PORT))
-    sock.sendto(str.encode("\0\6blksize\0000\000"), addr)
+    sock.sendto(str.encode("\0\6blksize\0001\000"), addr)
 

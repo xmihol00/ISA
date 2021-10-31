@@ -36,7 +36,7 @@ Použití příkazové řádky:
   -d <cesta/jmeno>                 : Povinný. Specifikuje cestu k souboru a jeho jméno.
   -t <0-255 včetně>                : Nepovinný. Specifikuje použité časové prodlení před znovu odesláním potenciálně ztraceného paketu.
                                      Výchozí hodnota je 1 s.
-  -s <1-2147483647 včetně>         : Nepovinný. Specifikuje použitou velikost bloku dat posílaných v jednom datagramu. Větší hodnoty 
+  -s <4-2147483647 včetně>         : Nepovinný. Specifikuje použitou velikost bloku dat posílaných v jednom datagramu. Větší hodnoty 
                                      mohou být přepsány minimálním MTU systému.
   -m                               : Nepovinný. Specifikuje použití multicastu pro čtení souboru ze serveru. Pokud je specifikován 
                                      parametr '-W' je tato hodnota ignorována.

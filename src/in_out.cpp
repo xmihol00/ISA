@@ -18,7 +18,7 @@ void help_msg()
     cout << "   -d <filepath/filename>           : Compulsory. Specifies the path to a read or written file and its name." << endl;
     cout << "   -t <0-255 inclusive>             : Optional. Specifies the used timeout in seconds before potentionaly lost datagram is" << endl;
     cout << "                                      resend. The default value is 1 s." << endl;
-    cout << "   -s <1-2147483647 inclusive>      : Optional. Specifies the used block size of transported data in one datagram." << endl; 
+    cout << "   -s <4-2147483647 inclusive>      : Optional. Specifies the used block size of transported data in one datagram." << endl; 
     cout << "                                      Larger values may be replaced with the MTU of the system." << endl;
     cout << "   -m                               : Optional. Specifies the use of multicast for reading a file from server." << endl;
     cout << "                                      When '-W' option is specified, the value is ignored." << endl;
