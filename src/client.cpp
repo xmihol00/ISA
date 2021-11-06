@@ -206,10 +206,10 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
         {
             do
             {
+                summary.lost_count++;
+
                 if (size == -1) // doslo k vyprseni casoveho limitu, nebo se jedna o prvni ACK
                 {
-                    summary.lost_count++;
-
                     if (retries++ > MAX_RETRIES)
                     {
                         cerr << "Error: Transfer of data failed. Server timed out." << endl;
@@ -302,10 +302,10 @@ transfer_summary_t read(int socket_fd, struct sockaddr *address, socklen_t addr_
         {
             do
             {
+                summary.lost_count++;
+                
                 if (size == -1) // doslo k vyprseni casoveho limitu, nebo se jedna o prvni cteni daneho bloku dat
                 {
-                    summary.lost_count++;
-
                     if (retries++ > MAX_RETRIES)
                     {
                         cerr << "Error: Transfer of data failed. Server timed out." << endl;
@@ -512,14 +512,14 @@ transfer_summary_t write(int socket_fd, struct sockaddr *address, socklen_t addr
         {
             do
             {
+                // vypocet odeslanych a ztracenych dat
+                summary.datagram_count++;
+                summary.data_size += size;
+                summary.lost_count++;
+                summary.lost_size += size;
+
                 if (err_size == -1) // odeslani dat jen v pripade timeout nebo prvniho odeslani
                 {
-                    // vypocet odeslanych a ztracenych dat
-                    summary.datagram_count++;
-                    summary.data_size += size;
-                    summary.lost_count++;
-                    summary.lost_size += size;
-
                     if (retries++ > MAX_RETRIES)
                     {
                         cerr << "Error: Transfer of data failed. Server timed out." << endl;
