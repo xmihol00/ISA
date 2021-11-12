@@ -90,7 +90,7 @@ int parse_line(const string &line, arguments_t &arguments)
             }
             if (arguments.file_URL.size() > MAX_URL_LEN) // zadana cesta a jmeno souboru je prilis dlouha
             {
-                cerr << "Error: lenght of the file URL cannot be larger than 512 characters. Type '?' or 'h' for help." << endl;
+                cerr << "Error: lenght of the file URL cannot be larger than 400 characters. Type '?' or 'h' for help." << endl;
                 return 0;
             }
         }
