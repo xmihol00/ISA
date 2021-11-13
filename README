@@ -33,10 +33,10 @@ Příklady sestavení a spuštění programu:
 Použití příkazové řádky:
   -R                               : Povinný, nelze kombinovat s parametrem '-W'. Specifikuje čtení souboru ze serveru.
   -W                               : Povinný, nelze kombinovat s parametrem '-R'. Specifikuje zápis souboru na serveru.
-  -d <cesta/jmeno>                 : Povinný. Specifikuje cestu k souboru a jeho jméno.
+  -d <cesta/jmeno>                 : Povinný. Specifikuje cestu k souboru a jeho jméno, cesta může být vynechána.
   -t <0-255 včetně>                : Nepovinný. Specifikuje použité časové prodlení před znovu odesláním potenciálně ztraceného paketu.
                                      Výchozí hodnota je 1 s.
-  -s <4-2147483647 včetně>         : Nepovinný. Specifikuje použitou velikost bloku dat posílaných v jednom datagramu. Větší hodnoty 
+  -s <8-65464 včetně>              : Nepovinný. Specifikuje použitou velikost bloku dat posílaných v jednom datagramu. Větší hodnoty 
                                      mohou být přepsány minimálním MTU systému.
   -m                               : Nepovinný. Specifikuje použití multicastu pro čtení souboru ze serveru. Pokud je specifikován 
                                      parametr '-W' je tato hodnota ignorována.
@@ -77,7 +77,7 @@ Příklady použití a výpisu programu:
      - 14 ms elapsed during the transfer,
      - 3 B of data were recieved in 1 datagram of a maximum data size 512 B.
 
-  > -s 85269 -a :: , 69 -d tests/hello -R 
+  > -s 5269 -a :: , 69 -d tests/hello -R 
   Warning: Specified block size exceeds minimum MTU of size 1448, which is used instead.
   Sat Oct 30 13:58:33 2021
   Reading file 'hello' from :: ...
@@ -112,5 +112,4 @@ Detaily implementace:
 
 
 Nedostatky implementace:
-  - IPv6 multicast nebyl testován,
-  - v příkazové řádce nelze zadat adresář nebo soubor obsahující mezery.
+  - V příkazové řádce nelze zadat adresář nebo soubor obsahující mezery.

@@ -739,7 +739,7 @@ bool set_negotioation(int &socket_fd, char *buffer, ssize_t &size, transfer_data
     {
         if (negotiation.block_size == -1) // server neodpovedel na velikost bloku
         {
-            cerr << "Warning: Server did not recognize block size option. Default size of 512 B is used instead" << endl;
+            cerr << "Warning: Server did not recognize block size option. Default size of 512 B is used instead." << endl;
             data.block_size = TFTP_DATA_SIZE;
         }
         else if (negotiation.block_size <= data.block_size) // server odpovedel spravne

@@ -32,7 +32,8 @@ using namespace std::chrono::_V2;
 #define CR 13
 #define LF 10
 #define MAX_URL_LEN 400
-#define MIN_BLK_SIZE 4
+#define MIN_BLK_SIZE 8
+#define MAX_BLK_SIZE 65464
 
 enum transfer_mode_t
 {

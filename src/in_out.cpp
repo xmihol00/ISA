@@ -18,7 +18,7 @@ void help_msg()
     cout << "   -d <filepath/filename>           : Compulsory. Specifies the path to a read or written file and its name." << endl;
     cout << "   -t <0-255 inclusive>             : Optional. Specifies the used timeout in seconds before potentionaly lost datagram is" << endl;
     cout << "                                      resend. The default value is 1 s." << endl;
-    cout << "   -s <4-2147483647 inclusive>      : Optional. Specifies the used block size of transported data in one datagram." << endl; 
+    cout << "   -s <8-65464 inclusive>           : Optional. Specifies the used block size of transported data in one datagram." << endl; 
     cout << "                                      Larger values may be replaced with the MTU of the system." << endl;
     cout << "   -m                               : Optional. Specifies the use of multicast for reading a file from server." << endl;
     cout << "                                      When '-W' option is specified, the value is ignored." << endl;
@@ -124,7 +124,7 @@ int parse_line(const string &line, arguments_t &arguments)
             }
             // prevod na cislo a kontrola rozsahu
             converter = strtol(word.c_str(), &endptr, 10);
-            if (converter < MIN_BLK_SIZE || converter > INT32_MAX)
+            if (converter < MIN_BLK_SIZE || converter > MAX_BLK_SIZE)
             {
                 cerr << "Error: Block size out of range. Type '?' or 'h' for help." << endl;
                 return 0;
