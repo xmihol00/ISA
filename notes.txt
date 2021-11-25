@@ -1,0 +1,80 @@
+
+sudo service tftpd-hpa status
+sudo service tftpd-hpa start
+sudo service tftpd-hpa stopq
+
+sudo systemctl status atftpd
+sudo systemctl stop atftpd
+sudo systemctl start atftpd
+sudo systemctl enable atftpd
+sudo systemctl disable atftpd
+sudo systemctl restart atftpd
+
+sudo ip -6 addr add 2001:0db8:0:f101::1/64 dev lo
+sudo route add -net 224.0.0.0 netmask 240.0.0.0 dev lo
+sudo ifconfig lo multicast
+
+-c ascii -W -d tests/CR_1_to_end_77.txt -s 77
+-c ascii -W -d tests/CR_end_77.txt -s 77
+-c ascii -W -d tests/CR_last_77.txt -s 77
+-c ascii -W -d tests/CR_LF_all.txt -s 77
+-c ascii -W -d tests/LFCR_split_end_77.txt -s 77
+-c ascii -W -d tests/CRLF_split_end_77.txt -s 77
+-c ascii -W -d tests/LF_1_to_end_77.txt -s 77
+-c ascii -W -d tests/LF_end_77.txt -s 77
+-c ascii -W -d tests/LF_last_77.txt -s 77
+
+-c ascii -R -d tests/CR_1_to_end_77.txt -s 77
+-c ascii -R -d tests/CR_end_77.txt -s 77
+-c ascii -R -d tests/CR_last_77.txt -s 77
+-c ascii -R -d tests/CR_LF_all.txt -s 77
+-c ascii -R -d tests/LFCR_split_end_77.txt -s 77
+-c ascii -R -d tests/CRLF_split_end_77.txt -s 77
+-c ascii -R -d tests/LF_1_to_end_77.txt -s 77
+-c ascii -R -d tests/LF_end_77.txt -s 77
+-c ascii -R -d tests/LF_last_77.txt -s 77
+
+diff -s  tests/CR_LF_all.txt CR_LF_all.txt
+diff -s  tests/CR_1_to_end_77.txt CR_1_to_end_77.txt
+diff -s  tests/CR_end_77.txt CR_end_77.txt
+diff -s  tests/CR_last_77.txt CR_last_77.txt
+diff -s  tests/CRLF_split_end_77.txt CRLF_split_end_77.txt
+diff -s  tests/LF_1_to_end_77.txt LF_1_to_end_77.txt
+diff -s  tests/LF_end_77.txt LF_end_77.txt
+diff -s  tests/LF_last_77.txt LF_last_77.txt
+diff -s  tests/LFCR_split_end_77.txt LFCR_split_end_77.txt
+
+diff  tests/CR_LF_all.txt CR_LF_all.txt
+diff  tests/CR_1_to_end_77.txt CR_1_to_end_77.txt
+diff  tests/CR_end_77.txt CR_end_77.txt
+diff  tests/CR_last_77.txt CR_last_77.txt
+diff  tests/CRLF_split_end_77.txt CRLF_split_end_77.txt
+diff  tests/LF_1_to_end_77.txt LF_1_to_end_77.txt
+diff  tests/LF_end_77.txt LF_end_77.txt
+diff  tests/LF_last_77.txt LF_last_77.txt
+diff  tests/LFCR_split_end_77.txt LFCR_split_end_77.txt
+
+-R -d file -a 2001:0db8:0:f101::1,69
+-W -d file -a ::1,69
+
+-c ascii -W -d tests/CR_1_to_end_77.txt -s 77
+-c ascii -W -d tests/CR_end_77.txt -s 77
+-c ascii -W -d tests/CR_last_77.txt -s 77
+-c ascii -W -d tests/CR_LF_all.txt -s 77
+-c ascii -W -d tests/LFCR_split_end_77.txt -s 77
+-c ascii -W -d tests/CRLF_split_end_77.txt -s 77
+-c ascii -W -d tests/LF_1_to_end_77.txt -s 77
+-c ascii -W -d tests/LF_end_77.txt -s 77
+-c ascii -W -d tests/LF_last_77.txt -s 77
+
+-c ascii -R -d tests/CR_1_to_end_77.txt -s 77
+-c ascii -R -d tests/CR_end_77.txt -s 77
+-c ascii -R -d tests/CR_last_77.txt -s 77
+-c ascii -R -d tests/CR_LF_all.txt -s 77
+-c ascii -R -d tests/LFCR_split_end_77.txt -s 77
+-c ascii -R -d tests/CRLF_split_end_77.txt -s 77
+-c ascii -R -d tests/LF_1_to_end_77.txt -s 77
+-c ascii -R -d tests/LF_end_77.txt -s 77
+-c ascii -R -d tests/LF_last_77.txt -s 77
+
+
